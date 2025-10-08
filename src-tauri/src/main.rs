@@ -118,6 +118,7 @@ struct AppSettings {
     auto_start_http: bool,
     auto_launch: bool,
     silent_launch: bool,
+    process_limit: u32,
 }
 
 #[derive(Clone)]
@@ -146,12 +147,14 @@ struct MemoryInfo {
     percent: f64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct ProcessInfo {
-    name: String,
+    memory: u64,
+    is_focused: bool,
+    window_title: String,
+    executable_name: String,
     pid: u32,
     cpu_usage: f32,
-    memory: u64,
 }
 
 #[derive(Serialize)]
@@ -235,6 +238,7 @@ impl AppState {
                 auto_start_http: true,
                 auto_launch: false,
                 silent_launch: false,
+                process_limit: 20,
             })),
             server_handle: Arc::new(Mutex::new(None)),
         }
@@ -302,6 +306,7 @@ async fn set_auto_launch(enable: bool, state: tauri::State<'_, AppState>) -> Res
 
 async fn get_system_info(State(state): State<Arc<AppState>>) -> Json<SystemInfo> {
     let share_settings = state.share_settings.lock().unwrap().clone();
+    let app_settings = state.app_settings.lock().unwrap().clone();
     let mut sys = System::new_all();
     sys.refresh_all();
 
@@ -336,17 +341,54 @@ async fn get_system_info(State(state): State<Arc<AppState>>) -> Json<SystemInfo>
     };
 
     let processes = if share_settings.share_processes {
-        Some(
-            sys.processes()
-                .iter()
-                .map(|(pid, process)| ProcessInfo {
-                    name: process.name().to_string(),
-                    pid: pid.as_u32(),
-                    cpu_usage: process.cpu_usage(),
+        // Get focused window PID
+        let focused_pid = windows_helper::get_focused_pid();
+        
+        // Get all window titles
+        let window_titles = windows_helper::get_window_titles();
+
+        let mut all_processes: Vec<ProcessInfo> = sys.processes()
+            .iter()
+            .map(|(pid, process)| {
+                let pid_u32 = pid.as_u32();
+                let is_focused = focused_pid.map_or(false, |fp| fp == pid_u32);
+                
+                // Use window title if available, otherwise use process name
+                let window_title = window_titles.get(&pid_u32)
+                    .map(|s| s.clone())
+                    .unwrap_or_else(|| process.name().to_string());
+
+                ProcessInfo {
                     memory: process.memory(),
-                })
-                .collect(),
-        )
+                    is_focused,
+                    window_title,
+                    executable_name: process.name().to_string(),
+                    pid: pid_u32,
+                    cpu_usage: process.cpu_usage(),
+                }
+            })
+            .collect();
+
+        // Sort by CPU usage descending
+        all_processes.sort_by(|a, b| b.cpu_usage.partial_cmp(&a.cpu_usage).unwrap());
+        
+        // Get the focused process if any
+        let focused_process = all_processes.iter()
+            .find(|p| p.is_focused)
+            .cloned();
+        
+        // Take top N processes
+        let limit = app_settings.process_limit as usize;
+        let mut result: Vec<ProcessInfo> = all_processes.into_iter().take(limit).collect();
+        
+        // Add focused process if it's not already in the list
+        if let Some(focused) = focused_process {
+            if !result.iter().any(|p| p.pid == focused.pid) {
+                result.insert(0, focused);
+            }
+        }
+
+        Some(result)
     } else {
         None
     };

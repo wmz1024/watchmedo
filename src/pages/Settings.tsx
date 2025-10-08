@@ -28,6 +28,7 @@ interface AppSettings {
   auto_start_http: boolean;
   auto_launch: boolean;
   silent_launch: boolean;
+  process_limit: number;
 }
 
 export function Settings() {
@@ -46,6 +47,7 @@ export function Settings() {
     auto_start_http: true,
     auto_launch: false,
     silent_launch: false,
+    process_limit: 20,
   });
   const [previewUrl, setPreviewUrl] = useState<string>("");
 
@@ -343,6 +345,42 @@ export function Settings() {
                 }
               }}
             />
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <Label htmlFor="process-limit">API进程列表数量限制</Label>
+            <p className="text-sm text-muted-foreground">
+              HTTP API 和远程推送的进程列表将包含 CPU 占用最高的前 N 个进程以及正在聚焦的进程
+            </p>
+            <div className="flex items-center space-x-4">
+              <Input
+                id="process-limit"
+                type="number"
+                min="1"
+                max="100"
+                value={appSettings.process_limit}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value) || 20;
+                  setAppSettings({ ...appSettings, process_limit: value });
+                }}
+                className="w-32"
+              />
+              <Button
+                onClick={async () => {
+                  try {
+                    await invoke("set_app_settings", { settings: appSettings });
+                    toast.success("进程数量限制已更新");
+                  } catch (error) {
+                    toast.error("更新设置失败");
+                    console.error(error);
+                  }
+                }}
+              >
+                保存
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
