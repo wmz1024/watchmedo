@@ -22,7 +22,6 @@ export function Remote() {
     interval_seconds: 60,
   });
   const [lastPushTime, setLastPushTime] = useState<string>("");
-  const [pushStatus, setPushStatus] = useState<string>("未推送");
 
   useEffect(() => {
     loadSettings();
@@ -65,11 +64,9 @@ export function Remote() {
       if (enabled) {
         await invoke("start_remote_push");
         toast.success("远程推送已启动");
-        setPushStatus("运行中");
       } else {
         await invoke("stop_remote_push");
         toast.success("远程推送已停止");
-        setPushStatus("已停止");
       }
     } catch (error) {
       toast.error("切换远程推送状态失败");
