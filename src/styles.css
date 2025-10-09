@@ -2,6 +2,42 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  /* 自定义滚动条样式 */
+  .scrollbar-custom {
+    scrollbar-width: thin;  /* Firefox */
+    scrollbar-color: hsl(var(--muted)) transparent;  /* Firefox */
+  }
+
+  .scrollbar-custom::-webkit-scrollbar {
+    width: 6px;  /* 垂直滚动条宽度 */
+    height: 6px;  /* 水平滚动条高度 */
+  }
+
+  .scrollbar-custom::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-custom::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted));
+    border-radius: 3px;
+  }
+
+  .scrollbar-custom::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground));
+  }
+
+  /* 隐藏滚动条但保持可滚动 */
+  .scrollbar-hidden {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;  /* Chrome, Safari and Opera */
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

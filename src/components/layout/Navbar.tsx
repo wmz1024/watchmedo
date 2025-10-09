@@ -18,7 +18,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
         >
           <Menu className="h-5 w-5" />
         </Button>
-        <div className="space-y-1">
+        <div className="space-y-1 mt-4 ml-2">
           <h2 className="text-2xl font-semibold tracking-tight">
             👁 Watch Me Do
           </h2>
