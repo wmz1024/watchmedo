@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统监控</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .cpu-bar {
+            background: #e0e0e0;
+            height: 20px;
+            border-radius: 10px;
+            margin: 5px 0;
+            overflow: hidden;
+        }
+        .cpu-usage {
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+        .memory-bar {
+            background: #e0e0e0;
+            height: 25px;
+            border-radius: 12px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        .memory-usage {
+            background: linear-gradient(90deg, #2196F3, #03A9F4);
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+        .process-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .process-table th, .process-table td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .offline {
+            color: red;
+            font-size: 24px;
+            text-align: center;
+            padding: 20px;
+        }
+        .refresh-timer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #333;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        .network-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .network-table th, .network-table td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .focused {
+            background-color: #e3f2fd;
+        }
+    </style>
+</head>
+<body>
+    <div class="refresh-timer" id="refreshTimer"></div>
+    <div class="container">
+        <div id="offlineMessage" class="offline" style="display: none;">
+            当前计算机不在线
+        </div>
+        <div id="systemInfo">
+            <div class="grid">
+                <!-- 基本信息 -->
+                <div class="card">
+                    <h2>基本信息</h2>
+                    <p>计算机名称: <span id="computerName"></span></p>
+                    <p>运行时间: <span id="uptime"></span></p>
+                </div>
+
+                <!-- 内存信息 -->
+                <div class="card">
+                    <h2>内存使用情况</h2>
+                    <div class="memory-bar">
+                        <div class="memory-usage" id="memoryUsage"></div>
+                    </div>
+                    <p>已用: <span id="memoryUsed"></span></p>
+                    <p>总计: <span id="memoryTotal"></span></p>
+                    <p>使用率: <span id="memoryPercent"></span>%</p>
+                </div>
+            </div>
+
+            <!-- CPU使用率 -->
+            <div class="card">
+                <h2>CPU使用率</h2>
+                <div id="cpuUsage"></div>
+            </div>
+
+            <!-- 磁盘信息 -->
+            <div class="card">
+                <h2>磁盘信息</h2>
+                <div id="diskInfo"></div>
+            </div>
+
+            <!-- 网络信息 -->
+            <div class="card">
+                <h2>网络信息</h2>
+                <table class="network-table">
+                    <thead>
+                        <tr>
+                            <th>接口名称</th>
+                            <th>接收</th>
+                            <th>发送</th>
+                        </tr>
+                    </thead>
+                    <tbody id="networkInfo"></tbody>
+                </table>
+            </div>
+
+            <!-- 进程信息 -->
+            <div class="card">
+                <h2>进程信息</h2>
+                <table class="process-table">
+                    <thead>
+                        <tr>
+                            <th>进程名</th>
+                            <th>PID</th>
+                            <th>内存使用</th>
+                            <th>CPU使用率</th>
+                            <th>窗口标题</th>
+                        </tr>
+                    </thead>
+                    <tbody id="processInfo"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 配置
+        const CONFIG = {
+            apiUrl: 'api/proxy.php', // API代理地址
+            refreshInterval: 10000, // 刷新间隔（毫秒）
+        };
+
+        // 格式化字节数
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // 格式化运行时间
+        function formatUptime(seconds) {
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const remainingSeconds = seconds % 60;
+
+            const parts = [];
+            if (days > 0) parts.push(`${days}天`);
+            if (hours > 0) parts.push(`${hours}小时`);
+            if (minutes > 0) parts.push(`${minutes}分钟`);
+            parts.push(`${remainingSeconds}秒`);
+
+            return parts.join(' ');
+        }
+
+        // 更新倒计时显示
+        function updateTimer(remaining) {
+            const timer = document.getElementById('refreshTimer');
+            timer.textContent = `${remaining}秒后刷新`;
+        }
+
+        // 更新系统信息
+        async function updateSystemInfo() {
+            try {
+                const response = await fetch(CONFIG.apiUrl);
+                if (!response.ok) throw new Error('Network response was not ok');
+                const data = await response.json();
+
+                // 显示系统信息，隐藏离线消息
+                document.getElementById('systemInfo').style.display = 'block';
+                document.getElementById('offlineMessage').style.display = 'none';
+
+                // 更新基本信息
+                document.getElementById('computerName').textContent = data.computer_name;
+                document.getElementById('uptime').textContent = formatUptime(data.uptime);
+
+                // 更新CPU使用率
+                const cpuContainer = document.getElementById('cpuUsage');
+                cpuContainer.innerHTML = data.cpu_usage.map((usage, index) => `
+                    <div>
+                        <small>核心 ${index + 1}</small>
+                        <div class="cpu-bar">
+                            <div class="cpu-usage" style="width: ${usage}%"></div>
+                        </div>
+                    </div>
+                `).join('');
+
+                // 更新内存信息
+                const memUsage = document.getElementById('memoryUsage');
+                memUsage.style.width = `${data.memory_usage.percent}%`;
+                document.getElementById('memoryUsed').textContent = formatBytes(data.memory_usage.used);
+                document.getElementById('memoryTotal').textContent = formatBytes(data.memory_usage.total);
+                document.getElementById('memoryPercent').textContent = data.memory_usage.percent.toFixed(2);
+
+                // 更新磁盘信息
+                const diskInfo = document.getElementById('diskInfo');
+                diskInfo.innerHTML = data.disks.map(disk => `
+                    <div style="margin-bottom: 15px;">
+                        <h3>${disk.name || disk.mount_point}</h3>
+                        <div class="cpu-bar">
+                            <div class="cpu-usage" style="width: ${((disk.total_space - disk.available_space) / disk.total_space * 100)}%"></div>
+                        </div>
+                        <small>可用: ${formatBytes(disk.available_space)} / 总计: ${formatBytes(disk.total_space)}</small>
+                    </div>
+                `).join('');
+
+                // 更新网络信息
+                const networkInfo = document.getElementById('networkInfo');
+                networkInfo.innerHTML = data.network.map(net => `
+                    <tr>
+                        <td>${net.name}</td>
+                        <td>${formatBytes(net.received)}</td>
+                        <td>${formatBytes(net.transmitted)}</td>
+                    </tr>
+                `).join('');
+
+                // 更新进程信息
+                const processInfo = document.getElementById('processInfo');
+                processInfo.innerHTML = data.processes.map(proc => `
+                    <tr class="${proc.is_focused ? 'focused' : ''}">
+                        <td>${proc.executable_name}</td>
+                        <td>${proc.pid}</td>
+                        <td>${formatBytes(proc.memory)}</td>
+                        <td>${(proc.cpu_usage / 10).toFixed(1)}%</td>
+                        <td>${proc.window_title}</td>
+                    </tr>
+                `).join('');
+
+            } catch (error) {
+                // 显示离线消息，隐藏系统信息
+                document.getElementById('systemInfo').style.display = 'none';
+                document.getElementById('offlineMessage').style.display = 'block';
+                console.error('Error fetching system info:', error);
+            }
+        }
+
+        // 初始化页面和定时器
+        async function init() {
+            // 立即更新一次
+            await updateSystemInfo();
+
+            // 设置定时刷新
+            let countdown = CONFIG.refreshInterval / 1000;
+            updateTimer(countdown);
+
+            setInterval(() => {
+                countdown -= 1;
+                if (countdown <= 0) {
+                    countdown = CONFIG.refreshInterval / 1000;
+                    updateSystemInfo();
+                }
+                updateTimer(countdown);
+            }, 1000);
+        }
+
+        // 启动应用
+        init();
+    </script>
+</body>
+</html>
