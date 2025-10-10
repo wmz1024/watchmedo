@@ -4,10 +4,9 @@ import { LayoutDashboard, Settings, Send, Info } from "lucide-react";
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
   onPageChange: (page: "dashboard" | "settings" | "remote" | "about") => void;
-  version?: string;
 }
 
-export function Sidebar({ className, onPageChange, version }: SidebarProps) {
+export function Sidebar({ className, onPageChange }: SidebarProps) {
   return (
     <div className={cn("pb-12 flex flex-col h-full", className)}>
       <div className="space-y-4 py-4 flex-1">
@@ -52,7 +51,7 @@ export function Sidebar({ className, onPageChange, version }: SidebarProps) {
         </div>
       </div>
       <div className="px-4 py-2 text-xs text-muted-foreground border-t">
-        <div>版本：{version || "v1.0.0"}</div>
+        <div>版本：{"v1.0.3"}</div>
         <div>© {new Date().getFullYear()} MZCompute GmbH</div>
       </div>
     </div>
