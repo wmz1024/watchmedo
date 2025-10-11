@@ -16,6 +16,9 @@ use tauri::{
 };
 use auto_launch::AutoLaunch;
 
+mod remote_push;
+use remote_push::{RemotePushState, RemoteSettings};
+
 #[cfg(windows)]
 mod windows_helper {
     use std::collections::HashMap;
@@ -127,6 +130,7 @@ struct AppState {
     share_settings: Arc<Mutex<ShareSettings>>,
     app_settings: Arc<Mutex<AppSettings>>,
     server_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    remote_push: RemotePushState,
 }
 
 #[derive(Serialize)]
@@ -218,34 +222,33 @@ struct DashboardNetworkInfo {
     total_transmitted: u64,
 }
 
-impl AppState {
-    fn new() -> Self {
-        Self {
-            http_settings: Arc::new(Mutex::new(HttpSettings {
-                port: 21536,
-                is_running: false,
-            })),
-            share_settings: Arc::new(Mutex::new(ShareSettings {
-                share_computer_name: true,
-                share_uptime: true,
-                share_cpu_usage: true,
-                share_memory_usage: true,
-                share_processes: true,
-                share_disks: true,
-                share_network: true,
-            })),
-            app_settings: Arc::new(Mutex::new(AppSettings {
-                auto_start_http: true,
-                auto_launch: false,
-                silent_launch: false,
-                process_limit: 20,
-            })),
-            server_handle: Arc::new(Mutex::new(None)),
+    impl AppState {
+        fn new() -> Self {
+            Self {
+                http_settings: Arc::new(Mutex::new(HttpSettings {
+                    port: 21536,
+                    is_running: false,
+                })),
+                share_settings: Arc::new(Mutex::new(ShareSettings {
+                    share_computer_name: true,
+                    share_uptime: true,
+                    share_cpu_usage: true,
+                    share_memory_usage: true,
+                    share_processes: true,
+                    share_disks: true,
+                    share_network: true,
+                })),
+                app_settings: Arc::new(Mutex::new(AppSettings {
+                    auto_start_http: true,
+                    auto_launch: false,
+                    silent_launch: false,
+                    process_limit: 20,
+                })),
+                server_handle: Arc::new(Mutex::new(None)),
+                remote_push: RemotePushState::new(),
+            }
         }
-    }
-}
-
-#[tauri::command]
+    }#[tauri::command]
 fn get_http_settings(state: tauri::State<AppState>) -> HttpSettings {
     state.http_settings.lock().unwrap().clone()
 }
@@ -263,6 +266,7 @@ fn get_app_settings(state: tauri::State<AppState>) -> AppSettings {
 #[tauri::command]
 fn set_http_port(port: u16, state: tauri::State<AppState>) {
     state.http_settings.lock().unwrap().port = port;
+    state.remote_push.update_http_port(port);
 }
 
 #[tauri::command]
@@ -738,6 +742,36 @@ fn main() {
         })
         .system_tray(create_tray())
         .on_system_tray_event(handle_tray_event)
+#[tauri::command]
+fn get_remote_settings(state: tauri::State<AppState>) -> RemoteSettings {
+    state.remote_push.get_settings()
+}
+
+#[tauri::command]
+fn set_remote_settings(settings: RemoteSettings, state: tauri::State<AppState>) {
+    state.remote_push.set_settings(settings);
+}
+
+#[tauri::command]
+async fn start_remote_push(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.remote_push.start_push().await
+}
+
+#[tauri::command]
+fn stop_remote_push(state: tauri::State<AppState>) -> Result<(), String> {
+    state.remote_push.stop_push()
+}
+
+#[tauri::command]
+async fn test_remote_push(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.remote_push.test_push().await
+}
+
+#[tauri::command]
+fn get_last_push_time(state: tauri::State<AppState>) -> Option<String> {
+    state.remote_push.get_last_push_time()
+}
+
         .invoke_handler(tauri::generate_handler![
             get_http_settings,
             get_share_settings,
@@ -752,6 +786,13 @@ fn main() {
             get_processes,
             get_disks,
             get_network_info_dashboard,
+            // Remote push commands
+            get_remote_settings,
+            set_remote_settings,
+            start_remote_push,
+            stop_remote_push,
+            test_remote_push,
+            get_last_push_time,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
