@@ -130,7 +130,7 @@ struct AppState {
     share_settings: Arc<Mutex<ShareSettings>>,
     app_settings: Arc<Mutex<AppSettings>>,
     server_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
-    remote_push: RemotePushState,
+    remote_push: Arc<RemotePushState>,
 }
 
 #[derive(Serialize)]
@@ -245,7 +245,7 @@ struct DashboardNetworkInfo {
                     process_limit: 20,
                 })),
                 server_handle: Arc::new(Mutex::new(None)),
-                remote_push: RemotePushState::new(),
+                remote_push: Arc::new(RemotePushState::new()),
             }
         }
     }#[tauri::command]
@@ -706,7 +706,7 @@ fn main() {
     let app_state = AppState::new();
 
     tauri::Builder::default()
-        .manage(app_state)
+        .manage(app_state.clone())
         .setup(|app| {
             let window = app.get_window("main").unwrap();
             
@@ -741,76 +741,31 @@ fn main() {
             Ok(())
         })
         .system_tray(create_tray())
-        .on_system_tray_event(handle_tray_event);
-
-#[tauri::command]
-fn get_remote_settings(state: tauri::State<AppState>) -> RemoteSettings {
-    state.remote_push.get_settings()
+        .invoke_handler(tauri::generate_handler![
+            get_http_settings,
+            get_share_settings,
+            get_app_settings,
+            set_http_port,
+            set_share_settings,
+            set_app_settings,
+            set_auto_launch,
+            start_http_server,
+            stop_http_server,
+            get_system_info_dashboard,
+            get_processes,
+            get_disks,
+            get_network_info_dashboard,
+            // Remote push commands
+            get_remote_settings,
+            set_remote_settings,
+            start_remote_push,
+            stop_remote_push,
+            test_remote_push,
+            get_last_push_time,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
-
-#[tauri::command]
-fn set_remote_settings(settings: RemoteSettings, state: tauri::State<AppState>) {
-    state.remote_push.set_settings(settings);
-}
-
-#[tauri::command]
-async fn start_remote_push(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    state.remote_push.start_push().await
-}
-
-#[tauri::command]
-fn stop_remote_push(state: tauri::State<AppState>) -> Result<(), String> {
-    state.remote_push.stop_push()
-}
-
-#[tauri::command]
-async fn test_remote_push(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    state.remote_push.test_push().await
-}
-
-#[tauri::command]
-fn get_last_push_time(state: tauri::State<AppState>) -> Option<String> {
-    state.remote_push.get_last_push_time()
-}
-
-        tauri::Builder::default()
-            .manage(app_state)
-            .setup(|app| {
-                let window = app.get_window("main").unwrap();
-                
-                // Check if launched with silent mode
-                let args: Vec<String> = std::env::args().collect();
-                let is_silent = args.iter().any(|arg| arg == "--silent");
-                
-                if is_silent {
-                    window.hide().unwrap();
-                }
-
-                // Handle window close event
-                let window_clone = window.clone();
-                window.on_window_event(move |event| {
-                    if let WindowEvent::CloseRequested { api, .. } = event {
-                        // Prevent closing, hide instead
-                        window_clone.hide().unwrap();
-                        api.prevent_close();
-                    }
-                });
-
-                // Auto start HTTP server if enabled
-                let app_state = app.state::<AppState>();
-                let app_settings = app_state.app_settings.lock().unwrap().clone();
-                if app_settings.auto_start_http {
-                    let state = app_state.inner().clone();
-                    tauri::async_runtime::spawn(async move {
-                        let _ = start_http_server_internal(state).await;
-                    });
-                }
-
-                Ok(())
-            })
-            .system_tray(create_tray())
-            .on_system_tray_event(handle_tray_event)
-            .invoke_handler(tauri::generate_handler![
             get_http_settings,
             get_share_settings,
             get_app_settings,
