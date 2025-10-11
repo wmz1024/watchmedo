@@ -741,6 +741,7 @@ fn main() {
             Ok(())
         })
         .system_tray(create_tray())
+        .on_system_tray_event(handle_tray_event)
         .invoke_handler(tauri::generate_handler![
             get_http_settings,
             get_share_settings,
@@ -761,31 +762,7 @@ fn main() {
             start_remote_push,
             stop_remote_push,
             test_remote_push,
-            get_last_push_time,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
-}
-            get_http_settings,
-            get_share_settings,
-            get_app_settings,
-            set_http_port,
-            set_share_settings,
-            set_app_settings,
-            set_auto_launch,
-            start_http_server,
-            stop_http_server,
-            get_system_info_dashboard,
-            get_processes,
-            get_disks,
-            get_network_info_dashboard,
-            // Remote push commands
-            get_remote_settings,
-            set_remote_settings,
-            start_remote_push,
-            stop_remote_push,
-            test_remote_push,
-            get_last_push_time,
+            get_last_push_time
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
