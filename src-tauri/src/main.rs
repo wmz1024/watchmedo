@@ -103,23 +103,6 @@ struct HttpSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct RemoteSettings {
-    enabled: bool,
-    url: String,
-    interval_seconds: u32,
-}
-
-impl Default for RemoteSettings {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            url: String::new(),
-            interval_seconds: 60,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ShareSettings {
     share_computer_name: bool,
     share_uptime: bool,
@@ -139,29 +122,11 @@ struct AppSettings {
 }
 
 #[derive(Clone)]
-struct RemotePushState {
-    settings: Arc<Mutex<RemoteSettings>>,
-    last_push_time: Arc<Mutex<Option<String>>>,
-    push_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
-}
-
-impl RemotePushState {
-    fn new() -> Self {
-        Self {
-            settings: Arc::new(Mutex::new(RemoteSettings::default())),
-            last_push_time: Arc::new(Mutex::new(None)),
-            push_task: Arc::new(Mutex::new(None)),
-        }
-    }
-}
-
-#[derive(Clone)]
 struct AppState {
     http_settings: Arc<Mutex<HttpSettings>>,
     share_settings: Arc<Mutex<ShareSettings>>,
     app_settings: Arc<Mutex<AppSettings>>,
     server_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
-    remote_push: RemotePushState,
 }
 
 #[derive(Serialize)]
@@ -253,7 +218,32 @@ struct DashboardNetworkInfo {
     total_transmitted: u64,
 }
 
-
+impl AppState {
+    fn new() -> Self {
+        Self {
+            http_settings: Arc::new(Mutex::new(HttpSettings {
+                port: 21536,
+                is_running: false,
+            })),
+            share_settings: Arc::new(Mutex::new(ShareSettings {
+                share_computer_name: true,
+                share_uptime: true,
+                share_cpu_usage: true,
+                share_memory_usage: true,
+                share_processes: true,
+                share_disks: true,
+                share_network: true,
+            })),
+            app_settings: Arc::new(Mutex::new(AppSettings {
+                auto_start_http: true,
+                auto_launch: false,
+                silent_launch: false,
+                process_limit: 20,
+            })),
+            server_handle: Arc::new(Mutex::new(None)),
+        }
+    }
+}
 
 #[tauri::command]
 fn get_http_settings(state: tauri::State<AppState>) -> HttpSettings {
@@ -314,8 +304,7 @@ async fn set_auto_launch(enable: bool, state: tauri::State<'_, AppState>) -> Res
     Ok(())
 }
 
-async fn get_system_info(state: State<AppState>) -> Json<SystemInfo> {
-    let state = &state;
+async fn get_system_info(State(state): State<Arc<AppState>>) -> Json<SystemInfo> {
     let share_settings = state.share_settings.lock().unwrap().clone();
     let app_settings = state.app_settings.lock().unwrap().clone();
     let mut sys = System::new_all();
@@ -709,224 +698,6 @@ fn handle_tray_event(app: &AppHandle, event: SystemTrayEvent) {
     }
 }
 
-async fn get_system_info_for_push(state: &AppState) -> SystemInfo {
-    let share_settings = state.share_settings.lock().unwrap().clone();
-    let app_settings = state.app_settings.lock().unwrap().clone();
-    let mut sys = System::new_all();
-    sys.refresh_all();
-
-    let computer_name = if share_settings.share_computer_name {
-        hostname::get().ok().and_then(|h| h.into_string().ok())
-    } else {
-        None
-    };
-
-    let uptime = if share_settings.share_uptime {
-        Some(System::uptime())
-    } else {
-        None
-    };
-
-    let cpu_usage = if share_settings.share_cpu_usage {
-        Some(sys.cpus().iter().map(|cpu| cpu.cpu_usage()).collect())
-    } else {
-        None
-    };
-
-    let memory_usage = if share_settings.share_memory_usage {
-        let total = sys.total_memory();
-        let used = sys.used_memory();
-        Some(MemoryInfo {
-            total,
-            used,
-            percent: (used as f64 / total as f64) * 100.0,
-        })
-    } else {
-        None
-    };
-
-    let processes = if share_settings.share_processes {
-        let focused_pid = windows_helper::get_focused_pid();
-        let window_titles = windows_helper::get_window_titles();
-        let mut all_processes: Vec<ProcessInfo> = sys.processes()
-            .iter()
-            .map(|(pid, process)| {
-                let pid_u32 = pid.as_u32();
-                let is_focused = focused_pid.map_or(false, |fp| fp == pid_u32);
-                let window_title = window_titles.get(&pid_u32)
-                    .map(|s| s.clone())
-                    .unwrap_or_else(|| process.name().to_string());
-                ProcessInfo {
-                    memory: process.memory(),
-                    is_focused,
-                    window_title,
-                    executable_name: process.name().to_string(),
-                    pid: pid_u32,
-                    cpu_usage: process.cpu_usage(),
-                }
-            })
-            .collect();
-
-        all_processes.sort_by(|a, b| b.cpu_usage.partial_cmp(&a.cpu_usage).unwrap());
-        all_processes.truncate(app_settings.process_limit as usize);
-        Some(all_processes)
-    } else {
-        None
-    };
-
-    let disks = if share_settings.share_disks {
-        let disks_list = Disks::new_with_refreshed_list();
-        Some(disks_list.iter().map(|disk| DiskInfo {
-            name: disk.name().to_string_lossy().to_string(),
-            mount_point: disk.mount_point().to_string_lossy().to_string(),
-            total_space: disk.total_space(),
-            available_space: disk.available_space(),
-        }).collect())
-    } else {
-        None
-    };
-
-    let network = if share_settings.share_network {
-        let networks = Networks::new_with_refreshed_list();
-        Some(networks.iter().map(|(name, network)| NetworkInfo {
-            name: name.to_string(),
-            received: network.total_received(),
-            transmitted: network.total_transmitted(),
-        }).collect())
-    } else {
-        None
-    };
-
-    SystemInfo {
-        computer_name,
-        uptime,
-        cpu_usage,
-        memory_usage,
-        processes,
-        disks,
-        network,
-    }
-}
-
-async fn push_system_data(state: &AppState) -> Result<(), String> {
-    let settings = state.remote_push.settings.lock().map_err(|e| e.to_string())?.clone();
-    if settings.url.is_empty() {
-        return Err("Remote URL is not set".to_string());
-    }
-
-    let system_info = get_system_info_for_push(state);
-    
-    let client = reqwest::Client::new();
-    let response = client.post(&settings.url)
-        .json(&system_info)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if !response.status().is_success() {
-        return Err(format!("Server returned error: {}", response.status()));
-    }
-
-    // 更新最后推送时间
-    let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let mut last_push_time = state.remote_push.last_push_time.lock().map_err(|e| e.to_string())?;
-    *last_push_time = Some(now);
-
-    Ok(())
-}
-
-#[tauri::command]
-async fn get_remote_settings(state: State<AppState>) -> Result<RemoteSettings, String> {
-    let settings = state.remote_push.settings.lock().map_err(|e| e.to_string())?;
-    Ok(settings.clone())
-}
-
-#[tauri::command]
-async fn set_remote_settings(state: State<AppState>, settings: RemoteSettings) -> Result<(), String> {
-    let mut current_settings = state.remote_push.settings.lock().map_err(|e| e.to_string())?;
-    *current_settings = settings;
-    Ok(())
-}
-
-#[tauri::command]
-async fn get_last_push_time(state: State<AppState>) -> Result<String, String> {
-    let last_time = state.remote_push.last_push_time.lock().map_err(|e| e.to_string())?;
-    last_time.clone().ok_or_else(|| "No push history".to_string())
-}
-
-#[tauri::command]
-async fn start_remote_push(state: State<AppState>) -> Result<(), String> {
-    let settings = state.remote_push.settings.lock().map_err(|e| e.to_string())?.clone();
-    if !settings.enabled {
-        return Err("Remote push is not enabled".to_string());
-    }
-
-    let mut push_task = state.remote_push.push_task.lock().map_err(|e| e.to_string())?;
-    if push_task.is_some() {
-        return Err("Remote push is already running".to_string());
-    }
-
-    let url = settings.url.clone();
-    let interval = settings.interval_seconds;
-    let state_clone = state.clone();
-
-    let handle = tokio::spawn(async move {
-        loop {
-            let result = push_system_data(&state_clone).await;
-            if let Err(e) = result {
-                eprintln!("Failed to push data: {}", e);
-            }
-
-            tokio::time::sleep(tokio::time::Duration::from_secs(interval as u64)).await;
-        }
-    });
-
-    *push_task = Some(handle);
-    Ok(())
-}
-
-#[tauri::command]
-async fn stop_remote_push(state: State<AppState>) -> Result<(), String> {
-    let mut push_task = state.remote_push.push_task.lock().map_err(|e| e.to_string())?;
-    if let Some(handle) = push_task.take() {
-        handle.abort();
-    }
-    Ok(())
-}
-
-#[tauri::command]
-async fn test_remote_push(state: State<AppState>) -> Result<(), String> {
-    push_system_data(&state).await
-}
-
-impl AppState {
-    fn new() -> Self {
-        Self {
-            http_settings: Arc::new(Mutex::new(HttpSettings {
-                port: 21536,
-                is_running: false,
-            })),
-            share_settings: Arc::new(Mutex::new(ShareSettings {
-                share_computer_name: true,
-                share_uptime: true,
-                share_cpu_usage: true,
-                share_memory_usage: true,
-                share_processes: true,
-                share_disks: true,
-                share_network: true,
-            })),
-            app_settings: Arc::new(Mutex::new(AppSettings {
-                auto_start_http: false,
-                auto_launch: false,
-                silent_launch: false,
-                process_limit: 10,
-            })),
-            server_handle: Arc::new(Mutex::new(None)),
-            remote_push: RemotePushState::new(),
-        }
-    }
-}
-
 fn main() {
     let app_state = AppState::new();
 
@@ -981,13 +752,6 @@ fn main() {
             get_processes,
             get_disks,
             get_network_info_dashboard,
-            // 远程推送相关命令
-            get_remote_settings,
-            set_remote_settings,
-            get_last_push_time,
-            start_remote_push,
-            stop_remote_push,
-            test_remote_push,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
