@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use sysinfo::{System, Networks, Disks};
 use tauri::{
     Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem, 
-    CustomMenuItem, AppHandle, WindowEvent
+    CustomMenuItem, AppHandle
 };
 use auto_launch::AutoLaunch;
 
@@ -741,7 +741,8 @@ fn main() {
             Ok(())
         })
         .system_tray(create_tray())
-        .on_system_tray_event(handle_tray_event)
+        .on_system_tray_event(handle_tray_event);
+
 #[tauri::command]
 fn get_remote_settings(state: tauri::State<AppState>) -> RemoteSettings {
     state.remote_push.get_settings()
@@ -772,7 +773,44 @@ fn get_last_push_time(state: tauri::State<AppState>) -> Option<String> {
     state.remote_push.get_last_push_time()
 }
 
-        .invoke_handler(tauri::generate_handler![
+        tauri::Builder::default()
+            .manage(app_state)
+            .setup(|app| {
+                let window = app.get_window("main").unwrap();
+                
+                // Check if launched with silent mode
+                let args: Vec<String> = std::env::args().collect();
+                let is_silent = args.iter().any(|arg| arg == "--silent");
+                
+                if is_silent {
+                    window.hide().unwrap();
+                }
+
+                // Handle window close event
+                let window_clone = window.clone();
+                window.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        // Prevent closing, hide instead
+                        window_clone.hide().unwrap();
+                        api.prevent_close();
+                    }
+                });
+
+                // Auto start HTTP server if enabled
+                let app_state = app.state::<AppState>();
+                let app_settings = app_state.app_settings.lock().unwrap().clone();
+                if app_settings.auto_start_http {
+                    let state = app_state.inner().clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = start_http_server_internal(state).await;
+                    });
+                }
+
+                Ok(())
+            })
+            .system_tray(create_tray())
+            .on_system_tray_event(handle_tray_event)
+            .invoke_handler(tauri::generate_handler![
             get_http_settings,
             get_share_settings,
             get_app_settings,

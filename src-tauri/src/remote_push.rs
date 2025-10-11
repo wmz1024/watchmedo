@@ -59,30 +59,35 @@ impl RemotePushState {
         let state = self.clone();
 
         let handle = tokio::spawn(async move {
-            let mut interval = time::interval(Duration::from_secs(state.settings.lock().unwrap().interval_seconds));
+                let interval_secs = {
+                    let settings = state.settings.lock().unwrap();
+                    settings.interval_seconds
+                };
+                let mut interval = time::interval(Duration::from_secs(interval_secs));
 
-            loop {
-                interval.tick().await;
-                
-                let port = *state.http_port.lock().unwrap();
-                let local_url = format!("http://localhost:{}/api/system", port);
-                
-                // 从本地 API 获取数据
-                match client.get(&local_url).send().await {
-                    Ok(response) => {
-                        if let Ok(data) = response.json::<serde_json::Value>().await {
-                            // 推送到远程服务器
-                            let settings = state.settings.lock().unwrap();
-                            if let Err(e) = client.post(&settings.url)
-                                .json(&data)
-                                .send()
-                                .await
-                            {
-                                eprintln!("Failed to push data: {}", e);
-                                continue;
-                            }
-
-                            // 更新最后推送时间
+                loop {
+                    interval.tick().await;
+                    
+                    let (port, remote_url) = {
+                        let port = *state.http_port.lock().unwrap();
+                        let settings = state.settings.lock().unwrap();
+                        (port, settings.url.clone())
+                    };
+                    let local_url = format!("http://localhost:{}/api/system", port);
+                    
+                    // 从本地 API 获取数据
+                    match client.get(&local_url).send().await {
+                        Ok(response) => {
+                            if let Ok(data) = response.json::<serde_json::Value>().await {
+                                // 推送到远程服务器
+                                if let Err(e) = client.post(&remote_url)
+                                    .json(&data)
+                                    .send()
+                                    .await
+                                {
+                                    eprintln!("Failed to push data: {}", e);
+                                    continue;
+                                }                            // 更新最后推送时间
                             let now = SystemTime::now()
                                 .duration_since(UNIX_EPOCH)
                                 .unwrap()
