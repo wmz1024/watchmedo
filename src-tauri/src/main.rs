@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use sysinfo::{System, Networks, Disks};
 use tauri::{
     Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem, 
-    CustomMenuItem, AppHandle
+    CustomMenuItem, AppHandle, WindowEvent
 };
 use auto_launch::AutoLaunch;
 
