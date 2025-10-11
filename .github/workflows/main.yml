@@ -34,6 +34,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 21
+          cache: 'npm'
+      
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          shared-key: ${{ matrix.rust_target }}
       
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
