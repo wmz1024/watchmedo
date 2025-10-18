@@ -171,33 +171,110 @@ switch ($action) {
             [$deviceId]
         );
         
-        // 最新进程
-        $latestProcesses = $db->fetchAll(
-            'SELECT * FROM process_records WHERE device_id = ? ORDER BY timestamp DESC LIMIT 20',
+        // 获取最新时间戳（从最新的进程记录中获取）
+        $latestTimestamp = $db->fetchOne(
+            'SELECT timestamp FROM process_records WHERE device_id = ? ORDER BY timestamp DESC LIMIT 1',
             [$deviceId]
         );
         
-        // 最新磁盘
-        $latestDisks = $db->fetchAll(
-            'SELECT * FROM disk_stats WHERE device_id = ? ORDER BY timestamp DESC LIMIT 10',
-            [$deviceId]
-        );
+        $timestamp = $latestTimestamp ? $latestTimestamp['timestamp'] : null;
         
-        // 最新网络
-        $latestNetwork = $db->fetchAll(
-            'SELECT * FROM network_stats WHERE device_id = ? ORDER BY timestamp DESC LIMIT 10',
-            [$deviceId]
-        );
+        // 获取该时间戳的所有进程（确保是同一次上报的数据）
+        $latestProcesses = [];
+        if ($timestamp) {
+            $latestProcesses = $db->fetchAll(
+                'SELECT * FROM process_records WHERE device_id = ? AND timestamp = ? ORDER BY cpu_usage DESC',
+                [$deviceId, $timestamp]
+            );
+        }
+        
+        // 最新磁盘（使用同一时间戳）
+        $latestDisks = [];
+        if ($timestamp) {
+            $latestDisks = $db->fetchAll(
+                'SELECT * FROM disk_stats WHERE device_id = ? AND timestamp = ?',
+                [$deviceId, $timestamp]
+            );
+        }
+        
+        // 最新网络（使用同一时间戳）
+        $latestNetwork = [];
+        if ($timestamp) {
+            $latestNetwork = $db->fetchAll(
+                'SELECT * FROM network_stats WHERE device_id = ? AND timestamp = ?',
+                [$deviceId, $timestamp]
+            );
+        }
         
         // 格式化进程数据
-        $processes = array_map(function($p) {
+        $processes = array_map(function($p) use ($db, $deviceId) {
+            $focusedDuration = 0;
+            
+            // 如果是聚焦的应用，计算停留时间
+            if ($p['is_focused']) {
+                // 获取这个应用最近连续聚焦的时间段
+                // 查找最早的连续聚焦记录
+                $firstFocusedTime = $db->fetchOne(
+                    'SELECT MIN(timestamp) as first_time 
+                     FROM (
+                         SELECT timestamp, executable_name, window_title,
+                                LAG(is_focused) OVER (ORDER BY timestamp) as prev_focused
+                         FROM process_records 
+                         WHERE device_id = ? 
+                           AND executable_name = ? 
+                           AND window_title = ?
+                         ORDER BY timestamp DESC 
+                         LIMIT 100
+                     ) sub
+                     WHERE is_focused = 1 AND (prev_focused = 0 OR prev_focused IS NULL)',
+                    [$deviceId, $p['executable_name'], $p['window_title']]
+                );
+                
+                // 如果查询不支持窗口函数，使用简单方法：查找最近的非聚焦记录之后的时间
+                if (!$firstFocusedTime) {
+                    $lastUnfocusedRecord = $db->fetchOne(
+                        'SELECT timestamp FROM process_records 
+                         WHERE device_id = ? 
+                           AND executable_name = ? 
+                           AND is_focused = 0 
+                           AND timestamp < ?
+                         ORDER BY timestamp DESC 
+                         LIMIT 1',
+                        [$deviceId, $p['executable_name'], $p['timestamp']]
+                    );
+                    
+                    if ($lastUnfocusedRecord) {
+                        $startTime = strtotime($lastUnfocusedRecord['timestamp']);
+                    } else {
+                        // 如果找不到之前的非聚焦记录，查找这个应用最早的聚焦记录
+                        $firstRecord = $db->fetchOne(
+                            'SELECT timestamp FROM process_records 
+                             WHERE device_id = ? 
+                               AND executable_name = ? 
+                               AND is_focused = 1 
+                             ORDER BY timestamp ASC 
+                             LIMIT 1',
+                            [$deviceId, $p['executable_name']]
+                        );
+                        $startTime = $firstRecord ? strtotime($firstRecord['timestamp']) : strtotime($p['timestamp']);
+                    }
+                } else {
+                    $startTime = strtotime($firstFocusedTime['first_time']);
+                }
+                
+                $currentTime = strtotime($p['timestamp']);
+                $focusedDuration = max(0, $currentTime - $startTime);
+            }
+            
             return [
                 'name' => $p['executable_name'],
                 'window_title' => $p['window_title'],
                 'cpu_usage' => round($p['cpu_usage'], 2),
                 'memory_usage' => $p['memory_usage'],
                 'memory_formatted' => formatBytes($p['memory_usage']),
-                'is_focused' => (bool)$p['is_focused']
+                'is_focused' => (bool)$p['is_focused'],
+                'focused_duration' => $focusedDuration,
+                'focused_duration_formatted' => formatUptime($focusedDuration)
             ];
         }, $latestProcesses);
         

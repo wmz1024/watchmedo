@@ -439,31 +439,71 @@ async function loadRealtimeData() {
         const response = await fetch(`../api/stats.php?action=realtime&device_id=${deviceId}`);
         const result = await response.json();
         
-        if (result.success) {
+        console.log('实时数据响应:', result); // 调试日志
+        
+        if (result.success && result.data) {
             renderRealtimeData(result.data);
             // 重置倒计时
             startCountdown();
+        } else {
+            console.error('实时数据加载失败:', result.error || '未知错误');
+            // 显示错误信息
+            showRealtimeError(result.error || '暂无实时数据');
         }
     } catch (error) {
         console.error('加载实时数据失败:', error);
+        showRealtimeError('网络请求失败');
     }
 }
 
 // 渲染实时数据
 function renderRealtimeData(data) {
+    console.log('渲染实时数据:', data); // 调试日志
+    
     // 渲染正在聚焦的应用
-    renderFocusedApp(data.processes);
+    if (data.processes) {
+        renderFocusedApp(data.processes);
+    } else {
+        console.warn('没有进程数据');
+    }
     
     // 渲染网络流量
-    renderNetworkStats(data.network);
+    if (data.network) {
+        renderNetworkStats(data.network);
+    } else {
+        console.warn('没有网络数据');
+    }
+}
+
+// 显示实时数据错误
+function showRealtimeError(message) {
+    const focusedContainer = document.getElementById('focused-app');
+    const networkContainer = document.getElementById('network-stats');
+    
+    if (focusedContainer) {
+        focusedContainer.innerHTML = `<p class="text-gray-500 text-sm">${escapeHtml(message)}</p>`;
+    }
+    
+    if (networkContainer) {
+        networkContainer.innerHTML = `<p class="text-gray-500 text-sm">${escapeHtml(message)}</p>`;
+    }
 }
 
 // 渲染正在聚焦的应用
 function renderFocusedApp(processes) {
     const container = document.getElementById('focused-app');
     
+    if (!container) {
+        console.error('找不到focused-app容器');
+        return;
+    }
+    
+    console.log('进程列表:', processes); // 调试日志
+    
     // 找到正在聚焦的应用
     const focusedApp = processes.find(p => p.is_focused);
+    
+    console.log('聚焦的应用:', focusedApp); // 调试日志
     
     if (focusedApp) {
         container.innerHTML = `
@@ -507,7 +547,14 @@ function renderFocusedApp(processes) {
 function renderNetworkStats(network) {
     const container = document.getElementById('network-stats');
     
-    if (network.length === 0) {
+    if (!container) {
+        console.error('找不到network-stats容器');
+        return;
+    }
+    
+    console.log('网络数据:', network); // 调试日志
+    
+    if (!network || network.length === 0) {
         container.innerHTML = '<p class="text-gray-500 text-center">暂无网络数据</p>';
         return;
     }
