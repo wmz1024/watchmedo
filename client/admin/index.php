@@ -101,25 +101,59 @@
 
                     <!-- 系统设置 -->
                     <div id="tab-settings" class="tab-content hidden">
-                        <h3 class="text-lg font-semibold text-gray-900 mb-4">系统设置</h3>
-                        <div class="space-y-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">数据库类型</label>
-                                <input type="text" id="db-type" readonly
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">在线检测阈值（秒）</label>
-                                <input type="number" id="online-threshold" 
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-md" value="300">
-                                <p class="text-xs text-gray-500 mt-1">设备超过此时间未上报将被标记为离线</p>
+                        <h3 class="text-lg font-semibold text-gray-900 mb-6">系统设置</h3>
+                        
+                        <!-- 首页配置 -->
+                        <div class="border border-gray-200 rounded-lg p-4 mb-6">
+                            <h4 class="font-medium text-gray-900 mb-4">首页配置</h4>
+                            <form id="homepage-form" class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">首页标题</label>
+                                    <input type="text" id="homepage-title" 
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md"
+                                           placeholder="设备监控中心">
+                                    <p class="text-xs text-gray-500 mt-1">显示在首页顶部的标题</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">首页简介</label>
+                                    <textarea id="homepage-description" rows="3"
+                                              class="w-full px-3 py-2 border border-gray-300 rounded-md"
+                                              placeholder="实时监控您的设备运行状态，追踪应用使用情况"></textarea>
+                                    <p class="text-xs text-gray-500 mt-1">显示在标题下方的描述文字</p>
+                                </div>
+                                <button type="submit" 
+                                        class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                                    保存首页配置
+                                </button>
+                            </form>
+                        </div>
+                        
+                        <!-- 基础设置 -->
+                        <div class="border border-gray-200 rounded-lg p-4">
+                            <h4 class="font-medium text-gray-900 mb-4">基础设置</h4>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">数据库类型</label>
+                                    <input type="text" id="db-type" readonly
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">在线检测阈值（秒）</label>
+                                    <input type="number" id="online-threshold" 
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md" value="300">
+                                    <p class="text-xs text-gray-500 mt-1">设备超过此时间未上报将被标记为离线</p>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- AI配置 -->
+                    <!-- 系统配置 -->
                     <div id="tab-ai" class="tab-content hidden">
-                        <h3 class="text-lg font-semibold text-gray-900 mb-4">AI配置</h3>
+                        <h3 class="text-lg font-semibold text-gray-900 mb-6">系统配置</h3>
+                        
+                        <!-- AI配置 -->
+                        <div class="border border-gray-200 rounded-lg p-4 mb-6">
+                            <h4 class="font-medium text-gray-900 mb-4">AI配置</h4>
                         <form id="ai-form" class="space-y-4">
                             <div>
                                 <label class="flex items-center">
@@ -150,15 +184,123 @@
                                 保存AI配置
                             </button>
                         </form>
+                        </div>
+                        
+                        <!-- Giscus评论配置 -->
+                        <div class="border border-gray-200 rounded-lg p-4">
+                            <h4 class="font-medium text-gray-900 mb-4">Giscus评论配置</h4>
+                            <form id="giscus-form" class="space-y-4">
+                                <div>
+                                    <label class="flex items-center">
+                                        <input type="checkbox" id="giscus-enabled" class="rounded border-gray-300 text-blue-600">
+                                        <span class="ml-2 text-sm font-medium text-gray-700">启用Giscus评论</span>
+                                    </label>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">GitHub仓库</label>
+                                    <input type="text" id="giscus-repo" 
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md"
+                                           placeholder="username/repo">
+                                    <p class="text-xs text-gray-500 mt-1">格式: username/repository</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Repository ID</label>
+                                    <input type="text" id="giscus-repo-id" 
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md"
+                                           placeholder="R_...">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                                    <input type="text" id="giscus-category" 
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md"
+                                           placeholder="Announcements">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Category ID</label>
+                                    <input type="text" id="giscus-category-id" 
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-md"
+                                           placeholder="DIC_...">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">主题</label>
+                                    <select id="giscus-theme" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                                        <option value="light">浅色</option>
+                                        <option value="dark">深色</option>
+                                        <option value="preferred_color_scheme">跟随系统</option>
+                                        <option value="transparent_dark">透明深色</option>
+                                    </select>
+                                </div>
+                                <div class="bg-blue-50 border border-blue-200 rounded-md p-3">
+                                    <p class="text-xs text-blue-800">
+                                        <strong>获取配置信息：</strong><br>
+                                        访问 <a href="https://giscus.app/zh-CN" target="_blank" class="underline">https://giscus.app</a>，
+                                        按照步骤配置后获取这些ID值
+                                    </p>
+                                </div>
+                                <button type="submit" 
+                                        class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                                    保存Giscus配置
+                                </button>
+                            </form>
+                        </div>
                     </div>
 
                     <!-- 维护 -->
                     <div id="tab-maintenance" class="tab-content hidden">
                         <h3 class="text-lg font-semibold text-gray-900 mb-4">数据维护</h3>
                         <div class="space-y-4">
+                            <!-- 自动清理配置 -->
                             <div class="border border-gray-200 rounded-lg p-4">
-                                <h4 class="font-medium text-gray-900 mb-2">清理旧数据</h4>
-                                <p class="text-sm text-gray-500 mb-4">删除指定天数之前的历史数据</p>
+                                <h4 class="font-medium text-gray-900 mb-2">自动清理配置</h4>
+                                <p class="text-sm text-gray-500 mb-4">系统会在每次接收数据后检测并自动清理旧数据</p>
+                                
+                                <div class="space-y-3">
+                                    <div class="flex items-center">
+                                        <input type="checkbox" id="auto-clean-enabled" class="rounded border-gray-300 text-blue-600">
+                                        <label for="auto-clean-enabled" class="ml-2 text-sm font-medium text-gray-700">启用自动清理</label>
+                                    </div>
+                                    
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">数据保留天数</label>
+                                            <div class="flex items-center space-x-2">
+                                                <input type="number" id="retention-days" value="30" min="1"
+                                                       class="flex-1 px-3 py-2 border border-gray-300 rounded-md">
+                                                <span class="text-sm text-gray-700">天</span>
+                                            </div>
+                                            <p class="text-xs text-gray-500 mt-1">超过此天数的数据将被删除</p>
+                                        </div>
+                                        
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">清理检测间隔</label>
+                                            <div class="flex items-center space-x-2">
+                                                <input type="number" id="cleanup-interval" value="24" min="1"
+                                                       class="flex-1 px-3 py-2 border border-gray-300 rounded-md">
+                                                <span class="text-sm text-gray-700">小时</span>
+                                            </div>
+                                            <p class="text-xs text-gray-500 mt-1">每隔此时间执行一次检测</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <button id="save-cleanup-config-btn" 
+                                            class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                                        保存配置
+                                    </button>
+                                </div>
+                                
+                                <!-- 清理状态 -->
+                                <div class="mt-4 p-3 bg-gray-50 rounded-md">
+                                    <div class="text-sm space-y-1">
+                                        <p class="text-gray-700">上次清理时间: <span id="last-cleanup-time" class="font-medium">-</span></p>
+                                        <p class="text-gray-700">下次清理: <span id="next-cleanup-time" class="font-medium">-</span></p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 手动清理 -->
+                            <div class="border border-gray-200 rounded-lg p-4">
+                                <h4 class="font-medium text-gray-900 mb-2">手动清理数据</h4>
+                                <p class="text-sm text-gray-500 mb-4">立即删除指定天数之前的历史数据</p>
                                 <div class="flex items-center space-x-4">
                                     <input type="number" id="clean-days" value="30" min="1"
                                            class="w-32 px-3 py-2 border border-gray-300 rounded-md">
@@ -242,8 +384,17 @@
             // AI配置
             document.getElementById('ai-form').addEventListener('submit', handleAISubmit);
             
+            // 首页配置
+            document.getElementById('homepage-form').addEventListener('submit', handleHomepageSubmit);
+            
+            // Giscus配置
+            document.getElementById('giscus-form').addEventListener('submit', handleGiscusSubmit);
+            
             // 数据清理
             document.getElementById('clean-data-btn').addEventListener('click', handleCleanData);
+            
+            // 自动清理配置
+            document.getElementById('save-cleanup-config-btn').addEventListener('click', handleSaveCleanupConfig);
         });
 
         // 检查登录状态
@@ -331,6 +482,11 @@
             activeBtn.classList.remove('text-gray-500');
             
             document.getElementById(`tab-${tab}`).classList.remove('hidden');
+            
+            // 如果切换到维护标签，刷新清理状态
+            if (tab === 'maintenance') {
+                loadCleanupStatus();
+            }
         }
 
         // 加载统计数据
@@ -504,9 +660,143 @@
                     document.getElementById('ai-enabled').checked = result.data.ai_enabled;
                     document.getElementById('ai-api-url').value = result.data.ai_api_url;
                     document.getElementById('ai-model').value = result.data.ai_model;
+                    
+                    // 加载自动清理设置
+                    document.getElementById('auto-clean-enabled').checked = result.data.auto_clean_enabled;
+                    document.getElementById('retention-days').value = result.data.data_retention_days;
+                    document.getElementById('cleanup-interval').value = result.data.cleanup_interval_hours;
+                    
+                    // 加载首页设置
+                    document.getElementById('homepage-title').value = result.data.homepage_title || '设备监控中心';
+                    document.getElementById('homepage-description').value = result.data.homepage_description || '实时监控您的设备运行状态，追踪应用使用情况';
+                    
+                    // 加载Giscus设置
+                    if (result.data.giscus_enabled !== undefined) {
+                        document.getElementById('giscus-enabled').checked = result.data.giscus_enabled;
+                        document.getElementById('giscus-repo').value = result.data.giscus_repo || '';
+                        document.getElementById('giscus-repo-id').value = result.data.giscus_repo_id || '';
+                        document.getElementById('giscus-category').value = result.data.giscus_category || '';
+                        document.getElementById('giscus-category-id').value = result.data.giscus_category_id || '';
+                        document.getElementById('giscus-theme').value = result.data.giscus_theme || 'light';
+                    }
+                    
+                    // 加载清理状态
+                    loadCleanupStatus();
                 }
             } catch (error) {
                 console.error('加载设置失败:', error);
+            }
+        }
+        
+        // 处理首页配置提交
+        async function handleHomepageSubmit(e) {
+            e.preventDefault();
+            
+            const data = {
+                homepage_title: document.getElementById('homepage-title').value,
+                homepage_description: document.getElementById('homepage-description').value
+            };
+            
+            try {
+                const response = await fetch('../api/admin.php?action=save_settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('首页配置保存成功');
+                } else {
+                    alert(result.error || '保存失败');
+                }
+            } catch (error) {
+                alert('保存失败: ' + error.message);
+            }
+        }
+        
+        // 处理Giscus配置提交
+        async function handleGiscusSubmit(e) {
+            e.preventDefault();
+            
+            const data = {
+                giscus_enabled: document.getElementById('giscus-enabled').checked,
+                giscus_repo: document.getElementById('giscus-repo').value,
+                giscus_repo_id: document.getElementById('giscus-repo-id').value,
+                giscus_category: document.getElementById('giscus-category').value,
+                giscus_category_id: document.getElementById('giscus-category-id').value,
+                giscus_theme: document.getElementById('giscus-theme').value
+            };
+            
+            try {
+                const response = await fetch('../api/admin.php?action=save_settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('Giscus配置保存成功');
+                } else {
+                    alert(result.error || '保存失败');
+                }
+            } catch (error) {
+                alert('保存失败: ' + error.message);
+            }
+        }
+        
+        // 加载清理状态
+        async function loadCleanupStatus() {
+            try {
+                const response = await fetch('../api/admin.php?action=get_cleanup_status');
+                const result = await response.json();
+                
+                if (result.success) {
+                    document.getElementById('last-cleanup-time').textContent = result.data.last_cleanup_ago;
+                    
+                    const nextCleanupSeconds = result.data.next_cleanup_in_seconds;
+                    if (nextCleanupSeconds > 0) {
+                        const hours = Math.floor(nextCleanupSeconds / 3600);
+                        const minutes = Math.floor((nextCleanupSeconds % 3600) / 60);
+                        document.getElementById('next-cleanup-time').textContent = 
+                            hours > 0 ? `${hours}小时${minutes}分钟后` : `${minutes}分钟后`;
+                    } else {
+                        document.getElementById('next-cleanup-time').textContent = '下次数据接收时';
+                    }
+                }
+            } catch (error) {
+                console.error('加载清理状态失败:', error);
+            }
+        }
+        
+        // 保存自动清理配置
+        async function handleSaveCleanupConfig() {
+            const data = {
+                auto_clean_enabled: document.getElementById('auto-clean-enabled').checked,
+                data_retention_days: parseInt(document.getElementById('retention-days').value),
+                cleanup_interval_hours: parseInt(document.getElementById('cleanup-interval').value)
+            };
+            
+            try {
+                const response = await fetch('../api/admin.php?action=save_settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('自动清理配置保存成功');
+                    loadCleanupStatus();
+                } else {
+                    alert(result.error || '保存失败');
+                }
+            } catch (error) {
+                alert('保存失败: ' + error.message);
             }
         }
 
@@ -549,6 +839,10 @@
                 return;
             }
             
+            const btn = document.getElementById('clean-data-btn');
+            btn.disabled = true;
+            btn.textContent = '清理中...';
+            
             try {
                 const response = await fetch('../api/admin.php?action=clean_data', {
                     method: 'POST',
@@ -559,13 +853,17 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    alert(result.message);
+                    alert(result.message + '\n删除记录数: ' + result.data.deleted);
                     loadStats();
+                    loadCleanupStatus();
                 } else {
                     alert(result.error || '清理失败');
                 }
             } catch (error) {
                 alert('清理失败: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '执行清理';
             }
         }
     </script>

@@ -155,10 +155,24 @@ try {
     
     $db->commit();
     
-    successResponse([
+    // 自动清理旧数据（基于时间间隔，不会每次都执行）
+    $cleanupResult = autoCleanOldData($db);
+    
+    // 准备响应数据
+    $responseData = [
         'device_id' => $deviceId,
         'timestamp' => $timestamp
-    ], '数据接收成功');
+    ];
+    
+    // 如果执行了清理，添加清理信息到响应（可选，用于调试）
+    if ($cleanupResult['executed']) {
+        $responseData['cleanup'] = [
+            'deleted' => $cleanupResult['deleted'],
+            'message' => $cleanupResult['message']
+        ];
+    }
+    
+    successResponse($responseData, '数据接收成功');
     
 } catch (Exception $e) {
     $db->rollBack();

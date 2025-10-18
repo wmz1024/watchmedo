@@ -49,12 +49,14 @@ switch ($action) {
         // 获取单个设备的详细统计
         $deviceId = $_GET['device_id'] ?? null;
         $date = $_GET['date'] ?? date('Y-m-d');
+        $viewMode = $_GET['view_mode'] ?? 'day'; // 'day', 'month', 'year'
         
         if (empty($deviceId)) {
             errorResponse('缺少设备ID');
         }
         
-        list($startDate, $endDate) = getDateRange($date);
+        // 根据视图模式获取日期范围
+        list($startDate, $endDate) = getDateRangeByViewMode($date, $viewMode);
         
         // 设备基本信息
         $device = $db->fetchOne('SELECT * FROM devices WHERE id = ?', [$deviceId]);
@@ -72,13 +74,50 @@ switch ($action) {
         // 应用使用统计（饼图数据）
         $appUsage = aggregateProcessUsage($db, $deviceId, $startDate, $endDate);
         
-        // 每小时使用统计（柱状图数据）
-        $hourlyUsage = aggregateHourlyUsage($db, $deviceId, $startDate, $endDate);
-        
-        // 填充24小时数据（确保每个小时都有数据）
-        $hourlyData = array_fill(0, 24, 0);
-        foreach ($hourlyUsage as $hour) {
-            $hourlyData[(int)$hour['hour']] = (int)$hour['total_seconds'];
+        // 根据视图模式获取时间维度统计（柱状图数据）
+        if ($viewMode === 'year') {
+            // 年视图：按月统计
+            $timeUsage = aggregateMonthlyUsage($db, $deviceId, $startDate, $endDate);
+            $timeData = array_fill(0, 12, 0);
+            $timeLabels = [];
+            for ($i = 1; $i <= 12; $i++) {
+                $timeLabels[] = $i . '月';
+            }
+            foreach ($timeUsage as $item) {
+                $month = (int)$item['month'];
+                if ($month >= 1 && $month <= 12) {
+                    $timeData[$month - 1] = (int)$item['total_seconds'];
+                }
+            }
+        } else if ($viewMode === 'month') {
+            // 月视图：按日统计
+            $timeUsage = aggregateDailyUsage($db, $deviceId, $startDate, $endDate);
+            $daysInMonth = (int)date('t', strtotime($startDate));
+            $timeData = array_fill(0, $daysInMonth, 0);
+            $timeLabels = [];
+            for ($i = 1; $i <= $daysInMonth; $i++) {
+                $timeLabels[] = $i . '日';
+            }
+            foreach ($timeUsage as $item) {
+                $day = (int)$item['day'];
+                if ($day >= 1 && $day <= $daysInMonth) {
+                    $timeData[$day - 1] = (int)$item['total_seconds'];
+                }
+            }
+        } else {
+            // 日视图：按小时统计
+            $hourlyUsage = aggregateHourlyUsage($db, $deviceId, $startDate, $endDate);
+            $timeData = array_fill(0, 24, 0);
+            $timeLabels = [];
+            for ($i = 0; $i < 24; $i++) {
+                $timeLabels[] = $i . ':00';
+            }
+            foreach ($hourlyUsage as $hour) {
+                $hourIndex = (int)$hour['hour'];
+                if ($hourIndex >= 0 && $hourIndex < 24) {
+                    $timeData[$hourIndex] = (int)$hour['total_seconds'];
+                }
+            }
         }
         
         // 最常用软件Top 10
@@ -101,12 +140,20 @@ switch ($action) {
             ];
         }
         
-        // 最常用时间段分析
-        $hourlyStats = [];
-        foreach ($hourlyData as $hour => $seconds) {
+        // 最常用时间段分析（根据视图模式）
+        $periodStats = [];
+        foreach ($timeData as $index => $seconds) {
             if ($seconds > 0) {
-                $hourlyStats[] = [
-                    'hour' => $hour,
+                $period = $index;
+                if ($viewMode === 'year') {
+                    $period = $index + 1; // 月份从1开始
+                } else if ($viewMode === 'month') {
+                    $period = $index + 1; // 日期从1开始
+                }
+                
+                $periodStats[] = [
+                    'hour' => $index, // 保持字段名以兼容
+                    'period' => $period, // 实际的时间段值（小时/日/月）
                     'seconds' => $seconds,
                     'formatted' => formatUptime($seconds)
                 ];
@@ -114,11 +161,11 @@ switch ($action) {
         }
         
         // 按使用时长排序
-        usort($hourlyStats, function($a, $b) {
+        usort($periodStats, function($a, $b) {
             return $b['seconds'] - $a['seconds'];
         });
         
-        $mostActiveHours = array_slice($hourlyStats, 0, 5);
+        $mostActiveHours = array_slice($periodStats, 0, 5);
         
         // 过滤掉使用时间少于60秒（1分钟）的应用
         $filteredAppUsage = array_filter($appUsage, function($app) {
@@ -136,8 +183,12 @@ switch ($action) {
             ],
             'latest_stats' => $latestStats,
             'date' => $date,
+            'view_mode' => $viewMode,
             'pie_chart' => $pieData,
-            'hourly_chart' => $hourlyData,
+            'time_chart' => [
+                'data' => $timeData,
+                'labels' => $timeLabels
+            ],
             'top_apps' => array_map(function($app) use ($totalUsageSeconds) {
                 return [
                     'name' => $app['executable_name'],
@@ -170,6 +221,12 @@ switch ($action) {
         if (empty($deviceId)) {
             errorResponse('缺少设备ID');
         }
+        
+        // 更新设备在线状态
+        updateDeviceOnlineStatus($db, $deviceId);
+        
+        // 获取设备信息
+        $device = $db->fetchOne('SELECT * FROM devices WHERE id = ?', [$deviceId]);
         
         // 最新统计
         $latestStats = $db->fetchOne(
@@ -345,6 +402,14 @@ switch ($action) {
         }, $latestNetwork);
         
         successResponse([
+            'device' => [
+                'id' => $device['id'],
+                'name' => $device['name'],
+                'computer_name' => $device['computer_name'],
+                'is_online' => (bool)$device['is_online'],
+                'last_seen_at' => $device['last_seen_at'],
+                'last_seen_ago' => timeAgo($device['last_seen_at'])
+            ],
             'stats' => $latestStats,
             'processes' => $processes,
             'disks' => $disks,

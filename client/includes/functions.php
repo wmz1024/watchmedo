@@ -146,6 +146,38 @@ function getDateRange($date = null) {
 }
 
 /**
+ * 根据视图模式获取日期范围
+ * 
+ * @param string $date 日期值（格式根据模式不同）
+ * @param string $viewMode 视图模式：'day', 'month', 'year'
+ * @return array [$startDate, $endDate]
+ */
+function getDateRangeByViewMode($date, $viewMode) {
+    switch ($viewMode) {
+        case 'month':
+            // 月视图：date格式为 "2024-01"
+            $firstDay = $date . '-01';
+            $lastDay = date('Y-m-t', strtotime($firstDay)); // 月最后一天
+            return [
+                $firstDay . ' 00:00:00',
+                $lastDay . ' 23:59:59'
+            ];
+            
+        case 'year':
+            // 年视图：date格式为 "2024"
+            return [
+                $date . '-01-01 00:00:00',
+                $date . '-12-31 23:59:59'
+            ];
+            
+        case 'day':
+        default:
+            // 日视图：date格式为 "2024-01-15"
+            return getDateRange($date);
+    }
+}
+
+/**
  * 安全获取POST数据
  */
 function getPostData() {
@@ -242,5 +274,224 @@ function aggregateHourlyUsage($db, $deviceId, $startDate, $endDate) {
     ";
     
     return $db->fetchAll($sql, [$deviceId, $startDate, $endDate]);
+}
+
+/**
+ * 按日聚合使用时间（月视图）
+ */
+function aggregateDailyUsage($db, $deviceId, $startDate, $endDate) {
+    if (DB_TYPE === 'sqlite') {
+        $dayFormat = "strftime('%d', timestamp)";
+    } else {
+        $dayFormat = "DATE_FORMAT(timestamp, '%d')";
+    }
+    
+    $sql = "
+        SELECT 
+            $dayFormat as day,
+            SUM(CASE WHEN is_focused = 1 THEN 1 ELSE 0 END) * 60 as total_seconds
+        FROM process_records
+        WHERE device_id = ? 
+            AND timestamp >= ? 
+            AND timestamp <= ?
+        GROUP BY day
+        ORDER BY day
+    ";
+    
+    return $db->fetchAll($sql, [$deviceId, $startDate, $endDate]);
+}
+
+/**
+ * 按月聚合使用时间（年视图）
+ */
+function aggregateMonthlyUsage($db, $deviceId, $startDate, $endDate) {
+    if (DB_TYPE === 'sqlite') {
+        $monthFormat = "strftime('%m', timestamp)";
+    } else {
+        $monthFormat = "DATE_FORMAT(timestamp, '%m')";
+    }
+    
+    $sql = "
+        SELECT 
+            $monthFormat as month,
+            SUM(CASE WHEN is_focused = 1 THEN 1 ELSE 0 END) * 60 as total_seconds
+        FROM process_records
+        WHERE device_id = ? 
+            AND timestamp >= ? 
+            AND timestamp <= ?
+        GROUP BY month
+        ORDER BY month
+    ";
+    
+    return $db->fetchAll($sql, [$deviceId, $startDate, $endDate]);
+}
+
+/**
+ * 自动清理旧数据
+ * 在每次数据接收后调用，但会根据时间间隔判断是否真正执行清理
+ * 
+ * @param Database $db 数据库实例
+ * @return array 清理结果 ['executed' => bool, 'deleted' => int, 'message' => string]
+ */
+function autoCleanOldData($db) {
+    // 获取配置
+    $retentionDays = (int)getSetting($db, 'data_retention_days', 30); // 默认保留30天
+    $cleanupInterval = (int)getSetting($db, 'cleanup_interval_hours', 24); // 默认24小时清理一次
+    $autoCleanEnabled = getSetting($db, 'auto_clean_enabled', '1') === '1'; // 默认启用
+    
+    // 如果禁用自动清理
+    if (!$autoCleanEnabled) {
+        return [
+            'executed' => false,
+            'deleted' => 0,
+            'message' => '自动清理已禁用'
+        ];
+    }
+    
+    // 检查上次清理时间
+    $lastCleanup = getSetting($db, 'last_cleanup_time', 0);
+    $currentTime = time();
+    $timeSinceLastCleanup = $currentTime - $lastCleanup;
+    $requiredInterval = $cleanupInterval * 3600; // 转换为秒
+    
+    // 如果距离上次清理时间不够，跳过
+    if ($timeSinceLastCleanup < $requiredInterval) {
+        return [
+            'executed' => false,
+            'deleted' => 0,
+            'message' => '距离上次清理时间不足，跳过清理',
+            'next_cleanup_in' => $requiredInterval - $timeSinceLastCleanup
+        ];
+    }
+    
+    // 执行清理
+    try {
+        $deletedCount = cleanOldData($db, $retentionDays);
+        
+        // 更新最后清理时间
+        setSetting($db, 'last_cleanup_time', $currentTime);
+        
+        return [
+            'executed' => true,
+            'deleted' => $deletedCount,
+            'message' => "成功清理 {$retentionDays} 天前的数据，删除了 {$deletedCount} 条记录"
+        ];
+    } catch (Exception $e) {
+        error_log('自动清理数据失败: ' . $e->getMessage());
+        return [
+            'executed' => false,
+            'deleted' => 0,
+            'message' => '清理失败: ' . $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * 清理指定天数之前的数据
+ * 
+ * @param Database $db 数据库实例
+ * @param int $days 保留天数
+ * @return int 删除的总记录数
+ */
+function cleanOldData($db, $days = 30) {
+    $cutoffDate = date('Y-m-d H:i:s', strtotime("-{$days} days"));
+    
+    $deletedCount = 0;
+    
+    // 开始事务
+    $db->beginTransaction();
+    
+    try {
+        // 清理设备统计数据
+        $result = $db->query(
+            'DELETE FROM device_stats WHERE timestamp < ?',
+            [$cutoffDate]
+        );
+        $deletedCount += $result->rowCount();
+        
+        // 清理进程记录
+        $result = $db->query(
+            'DELETE FROM process_records WHERE timestamp < ?',
+            [$cutoffDate]
+        );
+        $deletedCount += $result->rowCount();
+        
+        // 清理磁盘统计
+        $result = $db->query(
+            'DELETE FROM disk_stats WHERE timestamp < ?',
+            [$cutoffDate]
+        );
+        $deletedCount += $result->rowCount();
+        
+        // 清理网络统计
+        $result = $db->query(
+            'DELETE FROM network_stats WHERE timestamp < ?',
+            [$cutoffDate]
+        );
+        $deletedCount += $result->rowCount();
+        
+        // 提交事务
+        $db->commit();
+        
+        // 记录清理日志
+        error_log("数据清理完成: 删除了 {$days} 天前的 {$deletedCount} 条记录");
+        
+        return $deletedCount;
+        
+    } catch (Exception $e) {
+        $db->rollBack();
+        throw $e;
+    }
+}
+
+/**
+ * 获取数据库大小和记录统计
+ * 
+ * @param Database $db 数据库实例
+ * @return array 统计信息
+ */
+function getDatabaseStats($db) {
+    $stats = [
+        'device_stats' => 0,
+        'process_records' => 0,
+        'disk_stats' => 0,
+        'network_stats' => 0,
+        'total_records' => 0,
+        'db_size' => 0,
+        'db_size_formatted' => '0 B'
+    ];
+    
+    // 统计各表记录数
+    $tables = ['device_stats', 'process_records', 'disk_stats', 'network_stats'];
+    
+    foreach ($tables as $table) {
+        $result = $db->fetchOne("SELECT COUNT(*) as count FROM {$table}");
+        $count = $result ? (int)$result['count'] : 0;
+        $stats[$table] = $count;
+        $stats['total_records'] += $count;
+    }
+    
+    // 获取数据库大小
+    if (DB_TYPE === 'sqlite') {
+        $dbFile = SQLITE_DB_PATH;
+        if (file_exists($dbFile)) {
+            $stats['db_size'] = filesize($dbFile);
+            $stats['db_size_formatted'] = formatBytes($stats['db_size']);
+        }
+    } else if (DB_TYPE === 'mysql') {
+        $result = $db->fetchOne(
+            "SELECT 
+                SUM(data_length + index_length) as size 
+             FROM information_schema.TABLES 
+             WHERE table_schema = ?",
+            [MYSQL_DATABASE]
+        );
+        if ($result && $result['size']) {
+            $stats['db_size'] = (int)$result['size'];
+            $stats['db_size_formatted'] = formatBytes($stats['db_size']);
+        }
+    }
+    
+    return $stats;
 }
 

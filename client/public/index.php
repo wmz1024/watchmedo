@@ -61,6 +61,71 @@
 
     <!-- 主内容 -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- 首页标题和简介 -->
+        <div id="page-header" class="mb-8 text-center">
+            <h1 class="text-4xl font-bold text-gray-900 mb-4" id="page-title">设备监控中心</h1>
+            <p class="text-lg text-gray-600 max-w-3xl mx-auto" id="page-description">实时监控您的设备运行状态，追踪应用使用情况</p>
+        </div>
+        
+        <!-- 统计概览卡片 -->
+        <div id="stats-overview" class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8 hidden">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <svg class="h-10 w-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                        </svg>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-500">总设备数</p>
+                        <p class="text-2xl font-bold text-gray-900" id="total-devices">0</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <svg class="h-10 w-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-500">在线设备</p>
+                        <p class="text-2xl font-bold text-green-600" id="online-devices">0</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <svg class="h-10 w-10 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-500">平均CPU</p>
+                        <p class="text-2xl font-bold text-purple-600" id="avg-cpu">-%</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <svg class="h-10 w-10 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                        </svg>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-500">平均内存</p>
+                        <p class="text-2xl font-bold text-orange-600" id="avg-memory">-%</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <!-- 加载状态 -->
         <div id="loading" class="text-center py-12">
             <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -70,7 +135,7 @@
         <!-- 设备列表 -->
         <div id="devices-container" class="hidden">
             <div class="mb-6">
-                <h2 class="text-xl font-semibold text-gray-900">在线设备</h2>
+                <h2 class="text-xl font-semibold text-gray-900">设备列表</h2>
                 <p class="text-sm text-gray-500 mt-1">共 <span id="device-count">0</span> 台设备，<span id="online-count">0</span> 台在线</p>
             </div>
 

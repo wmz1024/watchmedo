@@ -53,10 +53,22 @@ switch ($action) {
         $settings = [
             'db_type' => DB_TYPE,
             'device_online_threshold' => DEVICE_ONLINE_THRESHOLD,
+            'homepage_title' => getSetting($db, 'homepage_title', 'Watch Me Do'),
+            'homepage_description' => getSetting($db, 'homepage_description', '实时监控您的设备运行状态，追踪应用使用情况'),
             'ai_enabled' => getSetting($db, 'ai_enabled', AI_ENABLED),
             'ai_api_url' => getSetting($db, 'ai_api_url', AI_API_URL),
             'ai_model' => getSetting($db, 'ai_model', AI_MODEL),
-            'ai_api_key' => getSetting($db, 'ai_api_key', '') ? '已设置' : '未设置'
+            'ai_api_key' => getSetting($db, 'ai_api_key', '') ? '已设置' : '未设置',
+            'auto_clean_enabled' => getSetting($db, 'auto_clean_enabled', '1') === '1',
+            'data_retention_days' => (int)getSetting($db, 'data_retention_days', 30),
+            'cleanup_interval_hours' => (int)getSetting($db, 'cleanup_interval_hours', 24),
+            'last_cleanup_time' => getSetting($db, 'last_cleanup_time', 0),
+            'giscus_enabled' => getSetting($db, 'giscus_enabled', '0') === '1',
+            'giscus_repo' => getSetting($db, 'giscus_repo', ''),
+            'giscus_repo_id' => getSetting($db, 'giscus_repo_id', ''),
+            'giscus_category' => getSetting($db, 'giscus_category', ''),
+            'giscus_category_id' => getSetting($db, 'giscus_category_id', ''),
+            'giscus_theme' => getSetting($db, 'giscus_theme', 'light')
         ];
         
         successResponse($settings);
@@ -91,6 +103,55 @@ switch ($action) {
             setSetting($db, 'ai_api_key', $data['ai_api_key']);
         }
         
+        // 保存首页设置
+        if (isset($data['homepage_title'])) {
+            setSetting($db, 'homepage_title', $data['homepage_title']);
+        }
+        
+        if (isset($data['homepage_description'])) {
+            setSetting($db, 'homepage_description', $data['homepage_description']);
+        }
+        
+        // 保存自动清理设置
+        if (isset($data['auto_clean_enabled'])) {
+            setSetting($db, 'auto_clean_enabled', $data['auto_clean_enabled'] ? '1' : '0');
+        }
+        
+        if (isset($data['data_retention_days'])) {
+            $days = max(1, (int)$data['data_retention_days']); // 至少保留1天
+            setSetting($db, 'data_retention_days', $days);
+        }
+        
+        if (isset($data['cleanup_interval_hours'])) {
+            $hours = max(1, (int)$data['cleanup_interval_hours']); // 至少1小时
+            setSetting($db, 'cleanup_interval_hours', $hours);
+        }
+        
+        // 保存Giscus设置
+        if (isset($data['giscus_enabled'])) {
+            setSetting($db, 'giscus_enabled', $data['giscus_enabled'] ? '1' : '0');
+        }
+        
+        if (isset($data['giscus_repo'])) {
+            setSetting($db, 'giscus_repo', $data['giscus_repo']);
+        }
+        
+        if (isset($data['giscus_repo_id'])) {
+            setSetting($db, 'giscus_repo_id', $data['giscus_repo_id']);
+        }
+        
+        if (isset($data['giscus_category'])) {
+            setSetting($db, 'giscus_category', $data['giscus_category']);
+        }
+        
+        if (isset($data['giscus_category_id'])) {
+            setSetting($db, 'giscus_category_id', $data['giscus_category_id']);
+        }
+        
+        if (isset($data['giscus_theme'])) {
+            setSetting($db, 'giscus_theme', $data['giscus_theme']);
+        }
+        
         successResponse([], '设置保存成功');
         break;
         
@@ -120,7 +181,7 @@ switch ($action) {
         break;
         
     case 'clean_data':
-        // 清理旧数据
+        // 手动清理旧数据
         if ($method !== 'POST') {
             errorResponse('只允许POST请求', 405);
         }
@@ -130,21 +191,47 @@ switch ($action) {
         }
         
         $data = getPostData();
-        $days = $data['days'] ?? 30;
+        $days = max(1, (int)($data['days'] ?? 30)); // 至少保留1天
         
-        $cutoffDate = date('Y-m-d H:i:s', strtotime("-{$days} days"));
+        try {
+            $deletedCount = cleanOldData($db, $days);
+            
+            // 更新最后清理时间
+            setSetting($db, 'last_cleanup_time', time());
+            
+            // SQLite优化
+            if (DB_TYPE === 'sqlite') {
+                $db->execute('VACUUM');
+            }
+            
+            successResponse([
+                'deleted' => $deletedCount
+            ], "已清理 {$days} 天前的数据，共删除 {$deletedCount} 条记录");
+        } catch (Exception $e) {
+            errorResponse('清理失败: ' . $e->getMessage(), 500);
+        }
+        break;
         
-        $db->execute('DELETE FROM device_stats WHERE timestamp < ?', [$cutoffDate]);
-        $db->execute('DELETE FROM process_records WHERE timestamp < ?', [$cutoffDate]);
-        $db->execute('DELETE FROM disk_stats WHERE timestamp < ?', [$cutoffDate]);
-        $db->execute('DELETE FROM network_stats WHERE timestamp < ?', [$cutoffDate]);
-        
-        // SQLite优化
-        if (DB_TYPE === 'sqlite') {
-            $db->execute('VACUUM');
+    case 'get_cleanup_status':
+        // 获取清理状态
+        if (!Auth::checkAdminSession()) {
+            errorResponse('未登录', 401);
         }
         
-        successResponse([], "已清理{$days}天前的数据");
+        $retentionDays = (int)getSetting($db, 'data_retention_days', 30);
+        $lastCleanup = (int)getSetting($db, 'last_cleanup_time', 0);
+        $cleanupInterval = (int)getSetting($db, 'cleanup_interval_hours', 24);
+        
+        $status = [
+            'retention_days' => $retentionDays,
+            'last_cleanup_time' => $lastCleanup,
+            'last_cleanup_formatted' => $lastCleanup > 0 ? date('Y-m-d H:i:s', $lastCleanup) : '从未',
+            'last_cleanup_ago' => $lastCleanup > 0 ? timeAgo(date('Y-m-d H:i:s', $lastCleanup)) : '从未',
+            'cleanup_interval_hours' => $cleanupInterval,
+            'next_cleanup_in_seconds' => max(0, ($cleanupInterval * 3600) - (time() - $lastCleanup))
+        ];
+        
+        successResponse($status);
         break;
         
     default:

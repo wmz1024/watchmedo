@@ -2,8 +2,10 @@
 
 let deviceId = null;
 let currentDate = null;
+let currentViewMode = 'day'; // 'day', 'month', 'year'
 let pieChart = null;
 let barChart = null;
+let realtimeChart = null;
 let refreshInterval = null;
 let countdownInterval = null;
 let countdownSeconds = 10;
@@ -12,6 +14,15 @@ let countdownSeconds = 10;
 let allApps = [];
 let currentPage = 1;
 let itemsPerPage = 10;
+
+// 实时数据历史（用于折线统计图）
+let realtimeHistory = {
+    timestamps: [],
+    cpu: [],
+    memory: [],
+    apps: [],
+    maxPoints: 30 // 保留最近30个数据点（5分钟）
+};
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
@@ -29,10 +40,38 @@ document.addEventListener('DOMContentLoaded', function() {
     currentDate = new Date().toISOString().split('T')[0];
     document.getElementById('date-picker').value = currentDate;
     
+    // 初始化月份选择器
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    document.getElementById('month-picker').value = currentMonth;
+    
+    // 初始化年份选择器
+    initYearPicker();
+    
+    // 视图模式切换
+    document.getElementById('view-day').addEventListener('click', () => switchViewMode('day'));
+    document.getElementById('view-month').addEventListener('click', () => switchViewMode('month'));
+    document.getElementById('view-year').addEventListener('click', () => switchViewMode('year'));
+    
     // 日期选择器变化事件
     document.getElementById('date-picker').addEventListener('change', function() {
         currentDate = this.value;
         loadDeviceData();
+        loadRealtimeData();
+    });
+    
+    // 月份选择器变化事件
+    document.getElementById('month-picker').addEventListener('change', function() {
+        currentDate = this.value;
+        loadDeviceData();
+        loadRealtimeData();
+    });
+    
+    // 年份选择器变化事件
+    document.getElementById('year-picker').addEventListener('change', function() {
+        currentDate = this.value;
+        loadDeviceData();
+        loadRealtimeData();
     });
     
     // 刷新按钮
@@ -48,10 +87,30 @@ document.addEventListener('DOMContentLoaded', function() {
     window.addEventListener('resize', function() {
         if (pieChart) pieChart.resize();
         if (barChart) barChart.resize();
+        if (realtimeChart) realtimeChart.resize();
     });
+    
+    // 手机端菜单按钮
+    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebar-overlay');
+    
+    if (mobileMenuBtn) {
+        mobileMenuBtn.addEventListener('click', toggleSidebar);
+    }
+    
+    if (sidebarOverlay) {
+        sidebarOverlay.addEventListener('click', closeSidebar);
+    }
     
     // 加载数据
     loadDeviceData();
+    
+    // 加载其他设备列表
+    loadOtherDevices();
+    
+    // 加载Giscus评论配置
+    loadGiscusConfig();
     
     // 启动实时数据自动刷新（每10秒）
     startRealtimeRefresh();
@@ -62,10 +121,91 @@ window.addEventListener('beforeunload', function() {
     stopRealtimeRefresh();
 });
 
+// 切换侧边栏（手机端）
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    
+    if (sidebar.classList.contains('show')) {
+        closeSidebar();
+    } else {
+        openSidebar();
+    }
+}
+
+// 打开侧边栏
+function openSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    
+    sidebar.classList.add('show');
+    overlay.classList.remove('hidden');
+    document.body.style.overflow = 'hidden'; // 禁止背景滚动
+}
+
+// 关闭侧边栏
+function closeSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    
+    sidebar.classList.remove('show');
+    overlay.classList.add('hidden');
+    document.body.style.overflow = ''; // 恢复滚动
+}
+
+// 初始化年份选择器
+function initYearPicker() {
+    const yearPicker = document.getElementById('year-picker');
+    const currentYear = new Date().getFullYear();
+    
+    // 生成最近5年的选项
+    for (let i = 0; i < 5; i++) {
+        const year = currentYear - i;
+        const option = document.createElement('option');
+        option.value = year;
+        option.textContent = year + '年';
+        yearPicker.appendChild(option);
+    }
+}
+
+// 切换视图模式
+function switchViewMode(mode) {
+    currentViewMode = mode;
+    
+    // 更新按钮样式
+    document.querySelectorAll('.view-mode-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.getElementById(`view-${mode}`).classList.add('active');
+    
+    // 显示/隐藏对应的选择器
+    document.getElementById('date-picker').classList.toggle('hidden', mode !== 'day');
+    document.getElementById('month-picker').classList.toggle('hidden', mode !== 'month');
+    document.getElementById('year-picker').classList.toggle('hidden', mode !== 'year');
+    
+    // 设置当前日期值
+    const now = new Date();
+    if (mode === 'day') {
+        currentDate = now.toISOString().split('T')[0];
+        document.getElementById('date-picker').value = currentDate;
+    } else if (mode === 'month') {
+        currentDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        document.getElementById('month-picker').value = currentDate;
+    } else if (mode === 'year') {
+        currentDate = now.getFullYear().toString();
+        document.getElementById('year-picker').value = currentDate;
+    }
+    
+    // 重新加载所有数据（统计数据 + 实时数据）
+    loadDeviceData();
+    loadRealtimeData();
+}
+
 // 加载设备数据
 async function loadDeviceData() {
     try {
-        const response = await fetch(`../api/stats.php?action=device&device_id=${deviceId}&date=${currentDate}`);
+        const url = `../api/stats.php?action=device&device_id=${deviceId}&date=${currentDate}&view_mode=${currentViewMode}`;
+        const response = await fetch(url);
         const result = await response.json();
         
         if (!result.success) {
@@ -95,55 +235,49 @@ function renderDeviceData(data) {
     if (!barChart) {
         barChart = echarts.init(document.getElementById('bar-chart'));
     }
+    if (!realtimeChart) {
+        realtimeChart = echarts.init(document.getElementById('realtime-chart'));
+        initRealtimeChart();
+    }
     
     // 设备基本信息
     document.getElementById('device-name').textContent = data.device.name;
-    document.getElementById('computer-name').textContent = data.device.computer_name || '-';
-    
-    const statusIndicator = document.getElementById('status-indicator');
-    const statusText = document.getElementById('status-text');
-    
-    if (data.device.is_online) {
-        statusIndicator.className = 'w-3 h-3 rounded-full mr-2 bg-green-500 animate-pulse';
-        statusText.textContent = '在线';
-        statusText.className = 'text-green-600';
-    } else {
-        statusIndicator.className = 'w-3 h-3 rounded-full mr-2 bg-gray-400';
-        statusText.textContent = '离线';
-        statusText.className = 'text-gray-500';
-    }
-    
-    document.getElementById('last-seen').textContent = data.device.last_seen_ago;
+    updateDeviceStatus(data.device);
     
     // 系统资源
     const stats = data.latest_stats || {};
     
-    document.getElementById('cpu-usage').textContent = stats.cpu_usage_avg 
-        ? stats.cpu_usage_avg.toFixed(1) + '%' 
-        : '-';
-    
-    document.getElementById('memory-usage').textContent = stats.memory_percent 
-        ? stats.memory_percent.toFixed(1) + '%' 
-        : '-';
-    
-    document.getElementById('uptime').textContent = stats.uptime 
-        ? formatUptime(stats.uptime) 
-        : '-';
-    
     document.getElementById('total-usage').textContent = data.total_usage.formatted;
-    document.getElementById('active-apps').textContent = data.total_apps_count || data.top_apps.length;
+    
+    // 初始化实时折线图数据（首次加载）
+    const cpuValue = stats.cpu_usage_avg || 0;
+    const memoryValue = stats.memory_percent || 0;
+    const appsValue = data.total_apps_count || data.top_apps.length;
+    
+    // 缓存活跃应用数
+    window.lastAppsCount = appsValue;
+    
+    // 添加初始数据到折线统计图
+    addRealtimeDataPoint('cpu', cpuValue);
+    addRealtimeDataPoint('memory', memoryValue);
+    addRealtimeDataPoint('apps', appsValue);
+    updateRealtimeChart();
     
     // 渲染电池信息（兼容旧版本）
     renderBatteryInfo(stats);
     
     // 渲染图表
     renderPieChart(data.pie_chart);
-    renderBarChart(data.hourly_chart);
+    
+    // 使用返回的view_mode或当前的viewMode
+    const viewMode = data.view_mode || currentViewMode;
+    renderTimeChart(data.time_chart, viewMode);
     
     // 确保图表正确显示
     setTimeout(function() {
         if (pieChart) pieChart.resize();
         if (barChart) barChart.resize();
+        if (realtimeChart) realtimeChart.resize();
     }, 100);
     
     // 渲染最常用时间段
@@ -207,9 +341,17 @@ function renderPieChart(data) {
     pieChart.setOption(option);
 }
 
-// 渲染柱状图
-function renderBarChart(data) {
-    const hours = Array.from({length: 24}, (_, i) => i + ':00');
+// 渲染时间维度图表（日/月/年）
+function renderTimeChart(chartData, viewMode) {
+    const chartTitle = viewMode === 'year' ? '月度使用时间' : 
+                      viewMode === 'month' ? '每日使用时间' : 
+                      '24小时使用时间';
+    
+    // 更新图表标题
+    const chartTitleEl = document.querySelector('#bar-chart').parentElement.querySelector('h3');
+    if (chartTitleEl) {
+        chartTitleEl.textContent = chartTitle;
+    }
     
     const option = {
         tooltip: {
@@ -230,17 +372,27 @@ function renderBarChart(data) {
         },
         xAxis: {
             type: 'category',
-            data: hours,
+            data: chartData.labels,
             axisLabel: {
                 fontSize: 10,
-                rotate: 45
+                rotate: viewMode === 'month' ? 45 : 0
             }
         },
         yAxis: {
             type: 'value',
             axisLabel: {
                 formatter: function(value) {
-                    return Math.floor(value / 60) + '分';
+                    if (viewMode === 'year' || viewMode === 'month') {
+                        // 年视图和月视图：显示小时
+                        const hours = Math.floor(value / 3600);
+                        if (hours > 0) {
+                            return hours + '时';
+                        }
+                        return Math.floor(value / 60) + '分';
+                    } else {
+                        // 日视图：显示分钟
+                        return Math.floor(value / 60) + '分';
+                    }
                 }
             }
         },
@@ -248,7 +400,7 @@ function renderBarChart(data) {
             {
                 name: '使用时间',
                 type: 'bar',
-                data: data,
+                data: chartData.data,
                 itemStyle: {
                     color: '#3B82F6',
                     borderRadius: [4, 4, 0, 0]
@@ -262,27 +414,51 @@ function renderBarChart(data) {
         ]
     };
     
-    barChart.setOption(option);
+    barChart.setOption(option, true); // true表示不合并，直接替换
 }
 
 // 渲染最常用时间段
 function renderActiveHours(hours) {
     const container = document.getElementById('active-hours');
+    const titleEl = document.getElementById('active-periods-title');
+    
+    // 根据视图模式更新标题
+    const title = currentViewMode === 'year' ? '使用最多的月份' :
+                  currentViewMode === 'month' ? '使用最多的日期' :
+                  '最常用时间段';
+    if (titleEl) {
+        titleEl.textContent = title;
+    }
     
     if (hours.length === 0) {
         container.innerHTML = '<p class="text-gray-500 col-span-5 text-center">暂无数据</p>';
         return;
     }
     
-    container.innerHTML = hours.map((item, index) => `
+    container.innerHTML = hours.map((item, index) => {
+        let periodText = '';
+        
+        if (currentViewMode === 'year') {
+            // 年视图：显示月份
+            periodText = `${item.period}月`;
+        } else if (currentViewMode === 'month') {
+            // 月视图：显示日期
+            periodText = `${item.period}日`;
+        } else {
+            // 日视图：显示小时
+            periodText = `${item.hour}:00 - ${item.hour + 1}:00`;
+        }
+        
+        return `
         <div class="text-center">
             <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 text-blue-600 font-bold mb-2">
                 ${index + 1}
             </div>
-            <p class="text-sm font-medium text-gray-900">${item.hour}:00 - ${item.hour + 1}:00</p>
+            <p class="text-sm font-medium text-gray-900">${periodText}</p>
             <p class="text-xs text-gray-500 mt-1">${item.formatted}</p>
         </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 // 渲染应用列表（带分页）
@@ -519,6 +695,7 @@ function startRealtimeRefresh() {
     // 每10秒刷新一次
     refreshInterval = setInterval(function() {
         loadRealtimeData();
+        loadOtherDevices(); // 同时刷新其他设备列表
     }, 10000);
     
     // 倒计时显示
@@ -590,6 +767,22 @@ async function loadRealtimeData() {
 function renderRealtimeData(data) {
     console.log('渲染实时数据:', data); // 调试日志
     
+    // 计算活跃应用数（有CPU或内存使用的进程）
+    let activeAppsCount = 0;
+    if (data.processes && data.processes.length > 0) {
+        activeAppsCount = data.processes.filter(p => 
+            p.cpu_usage > 0 || p.memory_usage > 0
+        ).length;
+        window.lastAppsCount = activeAppsCount;
+    }
+    
+    // 更新系统资源信息
+    if (data.stats) {
+        updateSystemResources(data.stats, data.device);
+    } else {
+        console.warn('没有系统资源数据');
+    }
+    
     // 渲染正在聚焦的应用
     if (data.processes) {
         renderFocusedApp(data.processes);
@@ -603,6 +796,95 @@ function renderRealtimeData(data) {
     } else {
         console.warn('没有网络数据');
     }
+}
+
+// 更新系统资源信息
+function updateSystemResources(stats, deviceInfo) {
+    // 获取当前活跃应用数（从进程数据中获取，或使用缓存值）
+    const appsValue = window.lastAppsCount || 0;
+    
+    // 更新CPU使用率
+    if (stats.cpu_usage_avg !== null && stats.cpu_usage_avg !== undefined) {
+        const cpuValue = parseFloat(stats.cpu_usage_avg) || 0;
+        addRealtimeDataPoint('cpu', cpuValue);
+    }
+    
+    // 更新内存使用率
+    if (stats.memory_percent !== null && stats.memory_percent !== undefined) {
+        const memoryValue = parseFloat(stats.memory_percent) || 0;
+        addRealtimeDataPoint('memory', memoryValue);
+    }
+    
+    // 更新活跃应用数
+    addRealtimeDataPoint('apps', appsValue);
+    
+        // 更新实时折线统计图
+    updateRealtimeChart();
+    
+    // 更新电池信息（兼容旧版本）
+    renderBatteryInfo(stats);
+    
+    // 更新设备在线状态（如果提供了设备信息）
+    if (deviceInfo) {
+        updateDeviceStatus(deviceInfo);
+    }
+    
+    // 更新最后上报时间（如果有）
+    if (stats.timestamp) {
+        const lastSeenAgo = timeAgoFromTimestamp(stats.timestamp);
+        const lastSeenEl = document.getElementById('last-seen');
+        if (lastSeenEl) {
+            lastSeenEl.textContent = lastSeenAgo;
+        }
+    }
+}
+
+// 更新设备状态
+function updateDeviceStatus(device) {
+    // 更新计算机名称
+    if (device.computer_name) {
+        const computerNameEl = document.getElementById('computer-name');
+        if (computerNameEl) {
+            computerNameEl.textContent = device.computer_name;
+        }
+    }
+    
+    // 更新在线状态
+    const statusIndicator = document.getElementById('status-indicator');
+    const statusText = document.getElementById('status-text');
+    
+    if (statusIndicator && statusText) {
+        if (device.is_online) {
+            statusIndicator.className = 'w-3 h-3 rounded-full mr-2 bg-green-500 animate-pulse';
+            statusText.textContent = '在线';
+            statusText.className = 'text-green-600';
+        } else {
+            statusIndicator.className = 'w-3 h-3 rounded-full mr-2 bg-gray-400';
+            statusText.textContent = '离线';
+            statusText.className = 'text-gray-500';
+        }
+    }
+    
+    // 更新最后上报时间
+    if (device.last_seen_ago) {
+        const lastSeenEl = document.getElementById('last-seen');
+        if (lastSeenEl) {
+            lastSeenEl.textContent = device.last_seen_ago;
+        }
+    }
+}
+
+// 计算时间差（前端版本）
+function timeAgoFromTimestamp(timestamp) {
+    const now = new Date();
+    const then = new Date(timestamp);
+    const diffMs = now - then;
+    const diffSecs = Math.floor(diffMs / 1000);
+    
+    if (diffSecs < 60) return diffSecs + '秒前';
+    if (diffSecs < 3600) return Math.floor(diffSecs / 60) + '分钟前';
+    if (diffSecs < 86400) return Math.floor(diffSecs / 3600) + '小时前';
+    return Math.floor(diffSecs / 86400) + '天前';
 }
 
 // 显示实时数据错误
@@ -761,6 +1043,329 @@ function formatBytes(bytes) {
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// 加载Giscus评论配置
+async function loadGiscusConfig() {
+    try {
+        const response = await fetch('../api/settings.php?action=giscus');
+        const result = await response.json();
+        
+        if (result.success && result.data && result.data.enabled) {
+            initGiscus(result.data);
+        }
+    } catch (error) {
+        console.error('加载Giscus配置失败:', error);
+    }
+}
+
+// 初始化Giscus评论
+function initGiscus(config) {
+    // 验证必需配置
+    if (!config.repo || !config.repo_id || !config.category_id) {
+        console.warn('Giscus配置不完整');
+        return;
+    }
+    
+    const section = document.getElementById('giscus-section');
+    const container = document.getElementById('giscus-container');
+    
+    if (!section || !container) {
+        console.error('找不到Giscus容器');
+        return;
+    }
+    
+    // 显示评论区
+    section.classList.remove('hidden');
+    
+    // 创建giscus脚本
+    const script = document.createElement('script');
+    script.src = 'https://giscus.app/client.js';
+    script.setAttribute('data-repo', config.repo);
+    script.setAttribute('data-repo-id', config.repo_id);
+    script.setAttribute('data-category', config.category || 'General');
+    script.setAttribute('data-category-id', config.category_id);
+    script.setAttribute('data-mapping', 'pathname');
+    script.setAttribute('data-strict', '0');
+    script.setAttribute('data-reactions-enabled', '1');
+    script.setAttribute('data-emit-metadata', '0');
+    script.setAttribute('data-input-position', 'top');
+    script.setAttribute('data-theme', config.theme || 'light');
+    script.setAttribute('data-lang', 'zh-CN');
+    script.setAttribute('data-loading', 'lazy');
+    script.crossOrigin = 'anonymous';
+    script.async = true;
+    
+    // 清空容器并添加脚本
+    container.innerHTML = '';
+    container.appendChild(script);
+}
+
+// 加载其他设备列表
+async function loadOtherDevices() {
+    try {
+        const response = await fetch('../api/stats.php?action=overview');
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+            renderOtherDevices(result.data);
+        }
+    } catch (error) {
+        console.error('加载其他设备失败:', error);
+    }
+}
+
+// 渲染其他设备列表
+function renderOtherDevices(devices) {
+    const container = document.getElementById('other-devices-list');
+    
+    // 过滤掉当前设备
+    const otherDevices = devices.filter(d => d.id != deviceId);
+    
+    // 更新设备数量
+    document.getElementById('other-devices-count').textContent = otherDevices.length + '台';
+    
+    if (otherDevices.length === 0) {
+        container.innerHTML = '<p class="text-xs text-gray-500 text-center py-4">暂无其他设备</p>';
+        return;
+    }
+    
+    container.innerHTML = otherDevices.map(device => {
+        const isOnline = device.is_online;
+        const statusColor = isOnline ? 'bg-green-500' : 'bg-gray-400';
+        const statusClass = isOnline ? 'animate-pulse' : '';
+        
+        return `
+        <a href="device.php?id=${device.id}" 
+           onclick="closeSidebar()"
+           class="block p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors ${device.id == deviceId ? 'bg-blue-50 border-blue-300' : ''}">
+            <div class="flex items-center justify-between">
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-900 truncate">${escapeHtml(device.name)}</p>
+                    <p class="text-xs text-gray-500 truncate">${escapeHtml(device.computer_name || '-')}</p>
+                </div>
+                <div class="ml-2">
+                    <span class="w-2 h-2 rounded-full ${statusColor} ${statusClass} inline-block"></span>
+                </div>
+            </div>
+            <div class="mt-2 flex items-center justify-between text-xs text-gray-500">
+                <span>${isOnline ? '在线' : '离线'}</span>
+                <span>${device.last_seen_ago}</span>
+            </div>
+        </a>
+        `;
+    }).join('');
+}
+
+// 初始化实时折线统计图
+function initRealtimeChart() {
+    const option = {
+        title: {
+            left: 'center',
+            textStyle: {
+                fontSize: 14,
+                color: '#666'
+            }
+        },
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: {
+                type: 'cross',
+                label: {
+                    backgroundColor: '#6a7985'
+                }
+            },
+            formatter: function(params) {
+                let result = params[0].name + '<br/>';
+                params.forEach(function(item) {
+                    const unit = item.seriesName === '应用数' ? '个' : '%';
+                    result += item.marker + item.seriesName + ': ' + item.value + unit + '<br/>';
+                });
+                return result;
+            }
+        },
+        legend: {
+            data: ['CPU使用率', '内存使用率', '活跃应用数'],
+            top: 10,
+            textStyle: {
+                fontSize: 12
+            }
+        },
+        grid: {
+            left: '3%',
+            right: '4%',
+            bottom: '5%',
+            top: '15%',
+            containLabel: true
+        },
+        xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: [],
+            axisLabel: {
+                fontSize: 11,
+                rotate: 0
+            }
+        },
+        yAxis: [
+            {
+                type: 'value',
+                name: '使用率(%)',
+                position: 'left',
+                min: 0,
+                max: 100,
+                axisLabel: {
+                    formatter: '{value}%'
+                },
+                splitLine: {
+                    lineStyle: {
+                        type: 'dashed'
+                    }
+                }
+            },
+            {
+                type: 'value',
+                name: '应用数',
+                position: 'right',
+                min: 0,
+                axisLabel: {
+                    formatter: '{value}'
+                },
+                splitLine: {
+                    show: false
+                }
+            }
+        ],
+        series: [
+            {
+                name: 'CPU使用率',
+                type: 'line',
+                smooth: true,
+                symbol: 'circle',
+                symbolSize: 6,
+                data: [],
+                lineStyle: {
+                    width: 2
+                },
+                itemStyle: {
+                    color: '#3b82f6'
+                },
+                areaStyle: {
+                    color: {
+                        type: 'linear',
+                        x: 0,
+                        y: 0,
+                        x2: 0,
+                        y2: 1,
+                        colorStops: [{
+                            offset: 0, color: 'rgba(59, 130, 246, 0.3)'
+                        }, {
+                            offset: 1, color: 'rgba(59, 130, 246, 0.05)'
+                        }]
+                    }
+                }
+            },
+            {
+                name: '内存使用率',
+                type: 'line',
+                smooth: true,
+                symbol: 'circle',
+                symbolSize: 6,
+                data: [],
+                lineStyle: {
+                    width: 2
+                },
+                itemStyle: {
+                    color: '#10b981'
+                },
+                areaStyle: {
+                    color: {
+                        type: 'linear',
+                        x: 0,
+                        y: 0,
+                        x2: 0,
+                        y2: 1,
+                        colorStops: [{
+                            offset: 0, color: 'rgba(16, 185, 129, 0.3)'
+                        }, {
+                            offset: 1, color: 'rgba(16, 185, 129, 0.05)'
+                        }]
+                    }
+                }
+            },
+            {
+                name: '活跃应用数',
+                type: 'line',
+                smooth: true,
+                symbol: 'circle',
+                symbolSize: 6,
+                yAxisIndex: 1,
+                data: [],
+                lineStyle: {
+                    width: 2,
+                    type: 'dashed'
+                },
+                itemStyle: {
+                    color: '#f59e0b'
+                }
+            }
+        ]
+    };
+    
+    realtimeChart.setOption(option);
+}
+
+// 添加实时数据点
+function addRealtimeDataPoint(type, value) {
+    const now = new Date();
+    const timeStr = now.getHours().toString().padStart(2, '0') + ':' + 
+                    now.getMinutes().toString().padStart(2, '0') + ':' + 
+                    now.getSeconds().toString().padStart(2, '0');
+    
+    // 添加时间戳（只添加一次）
+    if (realtimeHistory.timestamps.length === 0 || 
+        realtimeHistory.timestamps[realtimeHistory.timestamps.length - 1] !== timeStr) {
+        realtimeHistory.timestamps.push(timeStr);
+        
+        // 限制数据点数量
+        if (realtimeHistory.timestamps.length > realtimeHistory.maxPoints) {
+            realtimeHistory.timestamps.shift();
+        }
+    }
+    
+    // 添加对应类型的数据
+    if (realtimeHistory[type]) {
+        realtimeHistory[type].push(value);
+        
+        // 限制数据点数量
+        if (realtimeHistory[type].length > realtimeHistory.maxPoints) {
+            realtimeHistory[type].shift();
+        }
+    }
+}
+
+// 更新实时趋势图
+function updateRealtimeChart() {
+    if (!realtimeChart) return;
+    
+    const option = {
+        xAxis: {
+            data: realtimeHistory.timestamps
+        },
+        series: [
+            {
+                data: realtimeHistory.cpu
+            },
+            {
+                data: realtimeHistory.memory
+            },
+            {
+                data: realtimeHistory.apps
+            }
+        ]
+    };
+    
+    realtimeChart.setOption(option);
 }
 
 // 渲染电池信息（兼容旧版本）

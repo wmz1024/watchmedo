@@ -23,6 +23,39 @@
         .progress-bar {
             transition: width 0.3s ease;
         }
+        
+        .view-mode-btn {
+            transition: all 0.2s ease;
+        }
+        
+        .view-mode-btn.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+        
+        .view-mode-btn:not(.active):hover {
+            background-color: #f3f4f6;
+        }
+        
+        /* 手机端侧边栏 */
+        @media (max-width: 1023px) {
+            #sidebar {
+                position: fixed;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                z-index: 50;
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+                overflow-y: auto;
+                max-width: 280px;
+            }
+            
+            #sidebar.show {
+                display: block !important;
+                transform: translateX(0);
+            }
+        }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -31,27 +64,88 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex items-center">
-                    <a href="index.php" class="text-blue-600 hover:text-blue-800 mr-4">← 返回</a>
+                    <button id="mobile-menu-btn" class="lg:hidden mr-4 text-gray-600 hover:text-gray-900">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    </button>
                     <h1 class="text-xl font-bold text-gray-900" id="device-name">设备详情</h1>
                 </div>
-                <div class="flex items-center space-x-4">
-                    <input type="date" id="date-picker" class="border border-gray-300 rounded-md px-3 py-1 text-sm">
-                    <button id="refresh-btn" class="text-sm text-gray-600 hover:text-gray-900">刷新</button>
+                <div class="flex items-center">
+                    <button id="refresh-btn" class="text-sm text-gray-600 hover:text-gray-900 px-3 py-1">刷新</button>
                 </div>
             </div>
         </div>
     </nav>
 
     <!-- 主内容 -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <!-- 加载状态 -->
-        <div id="loading" class="text-center py-12">
-            <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <p class="mt-4 text-gray-600">加载中...</p>
-        </div>
+    <div class="flex max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- 左侧边栏 -->
+        <aside id="sidebar" class="w-64 mr-6 flex-shrink-0 lg:block hidden">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sticky top-4 space-y-4">
+                <!-- 返回按钮 -->
+                <a href="index.php" class="flex items-center text-blue-600 hover:text-blue-800 py-2 border-b border-gray-200">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                    </svg>
+                    返回首页
+                </a>
+                
+                <!-- 时间切换组件 -->
+                <div class="border-b border-gray-200 pb-4">
+                    <h3 class="text-sm font-semibold text-gray-900 mb-3">时间范围</h3>
+                    
+                    <!-- 视图模式选择 -->
+                    <div class="flex items-center space-x-1 mb-3 bg-gray-100 rounded-md p-1">
+                        <button id="view-day" class="view-mode-btn active flex-1 px-2 py-1 text-xs rounded">日</button>
+                        <button id="view-month" class="view-mode-btn flex-1 px-2 py-1 text-xs rounded">月</button>
+                        <button id="view-year" class="view-mode-btn flex-1 px-2 py-1 text-xs rounded">年</button>
+                    </div>
+                    
+                    <!-- 日期选择器（日视图） -->
+                    <input type="date" id="date-picker" class="w-full border border-gray-300 rounded-md px-2 py-1 text-xs">
+                    
+                    <!-- 月份选择器（月视图） -->
+                    <input type="month" id="month-picker" class="w-full border border-gray-300 rounded-md px-2 py-1 text-xs hidden">
+                    
+                    <!-- 年份选择器（年视图） -->
+                    <select id="year-picker" class="w-full border border-gray-300 rounded-md px-2 py-1 text-xs hidden">
+                        <!-- 动态生成年份选项 -->
+                    </select>
+                </div>
+                
+                <!-- 其他设备列表 -->
+                <div>
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-semibold text-gray-900">其他设备</h3>
+                        <span id="other-devices-count" class="text-xs text-gray-500">-</span>
+                    </div>
+                    <div id="other-devices-list" class="space-y-2 max-h-96 overflow-y-auto">
+                        <p class="text-xs text-gray-500 text-center py-4">加载中...</p>
+                    </div>
+                </div>
+                
+                <!-- Giscus评论区 -->
+                <div id="giscus-section" class="border-t border-gray-200 pt-4 hidden">
+                    <h3 class="text-sm font-semibold text-gray-900 mb-3">评论</h3>
+                    <div id="giscus-container"></div>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- 手机端遮罩层 -->
+        <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden hidden"></div>
 
-        <!-- 设备信息 -->
-        <div id="device-content" class="hidden">
+        <!-- 主内容区域 -->
+        <div class="flex-1">
+            <!-- 加载状态 -->
+            <div id="loading" class="text-center py-12">
+                <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                <p class="mt-4 text-gray-600">加载中...</p>
+            </div>
+
+            <!-- 设备信息 -->
+            <div id="device-content" class="hidden">
             <!-- 实时信息卡片 -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 <!-- 当前聚焦应用 -->
@@ -81,14 +175,10 @@
 
             <!-- 设备概览 -->
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div>
                         <p class="text-sm text-gray-500">计算机名称</p>
                         <p class="mt-1 text-lg font-semibold text-gray-900" id="computer-name">-</p>
-                    </div>
-                    <div>
-                        <p class="text-sm text-gray-500">运行时间</p>
-                        <p class="mt-1 text-lg font-semibold text-gray-900" id="uptime">-</p>
                     </div>
                     <div>
                         <p class="text-sm text-gray-500">在线状态</p>
@@ -106,24 +196,19 @@
                 </div>
             </div>
 
-            <!-- 系统资源 -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                    <p class="text-sm text-gray-500">CPU使用率</p>
-                    <p class="mt-2 text-3xl font-bold text-blue-600" id="cpu-usage">-</p>
+            <!-- 实时系统监控 - 折线图 -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">实时系统监控</h3>
+                    <span class="text-xs text-gray-500">最近5分钟变化趋势</span>
                 </div>
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                    <p class="text-sm text-gray-500">内存使用率</p>
-                    <p class="mt-2 text-3xl font-bold text-green-600" id="memory-usage">-</p>
-                </div>
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                    <p class="text-sm text-gray-500">总使用时间</p>
-                    <p class="mt-2 text-3xl font-bold text-purple-600" id="total-usage">-</p>
-                </div>
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                    <p class="text-sm text-gray-500">活跃应用数</p>
-                    <p class="mt-2 text-3xl font-bold text-orange-600" id="active-apps">-</p>
-                </div>
+                <div id="realtime-chart" style="height: 350px;"></div>
+            </div>
+            
+            <!-- 总使用时间卡片 -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+                <p class="text-sm text-gray-500">总使用时间</p>
+                <p class="mt-2 text-3xl font-bold text-purple-600" id="total-usage">-</p>
             </div>
 
             <!-- 电池信息（仅笔记本显示，兼容旧版本） -->
@@ -166,7 +251,7 @@
 
             <!-- 最常用时间段 -->
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">最常用时间段</h3>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4" id="active-periods-title">最常用时间段</h3>
                 <div id="active-hours" class="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <!-- 动态生成 -->
                 </div>
@@ -212,6 +297,7 @@
                     <p class="mt-2 text-gray-600">AI分析中...</p>
                 </div>
             </div>
+        </div>
         </div>
     </div>
 

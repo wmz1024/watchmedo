@@ -4,11 +4,40 @@ let devices = [];
 
 // 页面加载完成后获取设备列表
 document.addEventListener('DOMContentLoaded', function() {
+    // 加载首页配置
+    loadHomePageConfig();
+    
+    // 加载设备列表
     loadDevices();
     
     // 每30秒自动刷新
     setInterval(loadDevices, 30000);
 });
+
+// 加载首页配置
+async function loadHomePageConfig() {
+    try {
+        const response = await fetch('../api/settings.php?action=homepage');
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+            const config = result.data;
+            
+            // 更新标题
+            if (config.title) {
+                document.getElementById('page-title').textContent = config.title;
+                document.title = config.title + ' - Watch Me Do';
+            }
+            
+            // 更新简介
+            if (config.description) {
+                document.getElementById('page-description').textContent = config.description;
+            }
+        }
+    } catch (error) {
+        console.error('加载首页配置失败:', error);
+    }
+}
 
 // 加载设备列表
 async function loadDevices() {
@@ -35,21 +64,56 @@ function renderDevices() {
     const container = document.getElementById('devices-container');
     const noDevices = document.getElementById('no-devices');
     const grid = document.getElementById('devices-grid');
+    const statsOverview = document.getElementById('stats-overview');
     
     loading.classList.add('hidden');
     
     if (devices.length === 0) {
         noDevices.classList.remove('hidden');
         container.classList.add('hidden');
+        statsOverview.classList.add('hidden');
         return;
     }
     
     noDevices.classList.add('hidden');
     container.classList.remove('hidden');
+    statsOverview.classList.remove('hidden');
     
-    // 更新统计
+    // 计算统计数据
     const onlineCount = devices.filter(d => d.is_online).length;
-    document.getElementById('device-count').textContent = devices.length;
+    const totalDevices = devices.length;
+    
+    // 计算平均CPU和内存（只计算在线设备）
+    const onlineDevices = devices.filter(d => d.is_online && d.latest_stats);
+    let totalCpu = 0;
+    let totalMemory = 0;
+    let validCpuCount = 0;
+    let validMemoryCount = 0;
+    
+    onlineDevices.forEach(device => {
+        if (device.latest_stats) {
+            if (device.latest_stats.cpu_usage_avg !== null && device.latest_stats.cpu_usage_avg !== undefined) {
+                totalCpu += parseFloat(device.latest_stats.cpu_usage_avg);
+                validCpuCount++;
+            }
+            if (device.latest_stats.memory_percent !== null && device.latest_stats.memory_percent !== undefined) {
+                totalMemory += parseFloat(device.latest_stats.memory_percent);
+                validMemoryCount++;
+            }
+        }
+    });
+    
+    const avgCpu = validCpuCount > 0 ? (totalCpu / validCpuCount).toFixed(1) : '-';
+    const avgMemory = validMemoryCount > 0 ? (totalMemory / validMemoryCount).toFixed(1) : '-';
+    
+    // 更新统计概览
+    document.getElementById('total-devices').textContent = totalDevices;
+    document.getElementById('online-devices').textContent = onlineCount;
+    document.getElementById('avg-cpu').textContent = avgCpu + (avgCpu !== '-' ? '%' : '');
+    document.getElementById('avg-memory').textContent = avgMemory + (avgMemory !== '-' ? '%' : '');
+    
+    // 更新设备列表统计
+    document.getElementById('device-count').textContent = totalDevices;
     document.getElementById('online-count').textContent = onlineCount;
     
     // 生成设备卡片
