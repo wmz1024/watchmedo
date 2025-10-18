@@ -12,6 +12,7 @@ import { toast } from "sonner";
 interface RemoteSettings {
   enabled: boolean;
   url: string;
+  token: string;
   interval_seconds: number;
 }
 
@@ -19,6 +20,7 @@ export function Remote() {
   const [settings, setSettings] = useState<RemoteSettings>({
     enabled: false,
     url: "",
+    token: "",
     interval_seconds: 60,
   });
   const [lastPushTime, setLastPushTime] = useState<string>("");
@@ -106,10 +108,26 @@ export function Remote() {
               type="url"
               value={settings.url}
               onChange={(e) => setSettings({ ...settings, url: e.target.value })}
-              placeholder="https://example.com/api/monitor"
+              placeholder="https://example.com/api/receive.php"
             />
             <p className="text-xs text-muted-foreground">
               系统监控数据将通过POST请求发送到此URL
+            </p>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <Label htmlFor="token">设备Token</Label>
+            <Input
+              id="token"
+              type="password"
+              value={settings.token}
+              onChange={(e) => setSettings({ ...settings, token: e.target.value })}
+              placeholder="从服务器管理后台获取的设备Token"
+            />
+            <p className="text-xs text-muted-foreground">
+              用于验证设备身份的唯一Token，请在服务器管理后台创建设备后获取
             </p>
           </div>
 

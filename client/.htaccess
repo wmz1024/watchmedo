@@ -1,0 +1,30 @@
+# 启用重写引擎
+RewriteEngine On
+
+# 禁止访问隐藏文件
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# 禁止访问includes目录
+<IfModule mod_rewrite.c>
+    RewriteRule ^includes/ - [F,L]
+</IfModule>
+
+# 禁止直接访问配置文件
+<FilesMatch "\.(ini|conf|sql)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# 设置默认字符集
+AddDefaultCharset UTF-8
+
+# 启用CORS（可选，根据需要调整）
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type, Authorization, X-Device-Token"
+</IfModule>
+

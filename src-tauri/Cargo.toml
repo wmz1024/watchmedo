@@ -19,6 +19,7 @@ tower-http = { version = "0.5", features = ["cors"] }
 sysinfo = "0.30"
 auto-launch = "0.5"
 hostname = "0.3"
+reqwest = { version = "0.11", features = ["json"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.52", features = [

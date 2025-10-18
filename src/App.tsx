@@ -5,10 +5,11 @@ import { Navbar } from "./components/layout/Navbar";
 import { Dashboard } from "./pages/Dashboard";
 import { Settings } from "./pages/Settings";
 import { Remote } from "./pages/Remote";
+import { About } from "./pages/About";
 import { Toaster } from "@/components/ui/sonner";
 
 export const App = () => {
-  const [page, setPage] = useState<"dashboard" | "settings" | "remote">("dashboard");
+  const [page, setPage] = useState<"dashboard" | "settings" | "remote" | "about">("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
@@ -47,6 +48,7 @@ export const App = () => {
                     {page === "dashboard" && <Dashboard />}
                     {page === "remote" && <Remote />}
                     {page === "settings" && <Settings />}
+                    {page === "about" && <About />}
                   </div>
                 </div>
               </div>

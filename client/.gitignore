@@ -1,0 +1,36 @@
+# 配置文件
+
+# 数据目录
+/data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+
+
+# 日志文件
+*.log
+error_log
+
+# 临时文件
+*.tmp
+*.bak
+*.swp
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE文件
+.vscode/
+.idea/
+*.sublime-*
+
+# 备份文件
+*.sql
+*.sql.gz
+backup/
+

@@ -15,6 +15,7 @@ use tauri::{
     CustomMenuItem, AppHandle, WindowEvent
 };
 use auto_launch::AutoLaunch;
+use std::time::SystemTime;
 
 #[cfg(windows)]
 mod windows_helper {
@@ -121,12 +122,23 @@ struct AppSettings {
     process_limit: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RemoteSettings {
+    enabled: bool,
+    url: String,
+    token: String,
+    interval_seconds: u64,
+}
+
 #[derive(Clone)]
 struct AppState {
     http_settings: Arc<Mutex<HttpSettings>>,
     share_settings: Arc<Mutex<ShareSettings>>,
     app_settings: Arc<Mutex<AppSettings>>,
+    remote_settings: Arc<Mutex<RemoteSettings>>,
     server_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    remote_push_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    last_push_time: Arc<Mutex<Option<SystemTime>>>,
 }
 
 #[derive(Serialize)]
@@ -240,7 +252,15 @@ impl AppState {
                 silent_launch: false,
                 process_limit: 20,
             })),
+            remote_settings: Arc::new(Mutex::new(RemoteSettings {
+                enabled: false,
+                url: String::new(),
+                token: String::new(),
+                interval_seconds: 60,
+            })),
             server_handle: Arc::new(Mutex::new(None)),
+            remote_push_handle: Arc::new(Mutex::new(None)),
+            last_push_time: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -261,6 +281,11 @@ fn get_app_settings(state: tauri::State<AppState>) -> AppSettings {
 }
 
 #[tauri::command]
+fn get_remote_settings(state: tauri::State<AppState>) -> RemoteSettings {
+    state.remote_settings.lock().unwrap().clone()
+}
+
+#[tauri::command]
 fn set_http_port(port: u16, state: tauri::State<AppState>) {
     state.http_settings.lock().unwrap().port = port;
 }
@@ -273,6 +298,11 @@ fn set_share_settings(settings: ShareSettings, state: tauri::State<AppState>) {
 #[tauri::command]
 fn set_app_settings(settings: AppSettings, state: tauri::State<AppState>) {
     *state.app_settings.lock().unwrap() = settings;
+}
+
+#[tauri::command]
+fn set_remote_settings(settings: RemoteSettings, state: tauri::State<AppState>) {
+    *state.remote_settings.lock().unwrap() = settings;
 }
 
 #[tauri::command]
@@ -486,6 +516,171 @@ async fn stop_http_server(state: tauri::State<'_, AppState>) -> Result<(), Strin
     }
     state.http_settings.lock().unwrap().is_running = false;
     Ok(())
+}
+
+#[tauri::command]
+async fn start_remote_push(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let remote_settings = state.remote_settings.lock().unwrap().clone();
+    let http_port = state.http_settings.lock().unwrap().port;
+    
+    if remote_settings.url.is_empty() {
+        return Err("远程URL未配置".to_string());
+    }
+
+    // Stop existing task if any
+    if let Some(handle) = state.remote_push_handle.lock().unwrap().take() {
+        handle.abort();
+    }
+
+    let state_clone = state.inner().clone();
+    let handle = tokio::spawn(async move {
+        let client = reqwest::Client::new();
+        let local_url = format!("http://localhost:{}/api/system", http_port);
+        
+        loop {
+            let remote_settings = state_clone.remote_settings.lock().unwrap().clone();
+            
+            // Check if still enabled
+            if !remote_settings.enabled {
+                break;
+            }
+
+            // Fetch data from local API
+            match reqwest::get(&local_url).await {
+                Ok(response) => {
+                    if let Ok(json_data) = response.text().await {
+                        // POST to remote server
+                        let mut request = client
+                            .post(&remote_settings.url)
+                            .header("Content-Type", "application/json");
+                        
+                        // Add token header if provided
+                        if !remote_settings.token.is_empty() {
+                            request = request.header("X-Device-Token", &remote_settings.token);
+                        }
+                        
+                        match request
+                            .body(json_data)
+                            .send()
+                            .await
+                        {
+                            Ok(resp) => {
+                                if resp.status().is_success() {
+                                    println!("Remote push successful");
+                                    // Update last push time
+                                    *state_clone.last_push_time.lock().unwrap() = Some(SystemTime::now());
+                                } else {
+                                    eprintln!("Remote push failed: {}", resp.status());
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to push to remote: {}", e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to fetch local API: {}", e);
+                }
+            }
+
+            // Wait for next interval
+            tokio::time::sleep(tokio::time::Duration::from_secs(remote_settings.interval_seconds)).await;
+        }
+    });
+
+    *state.remote_push_handle.lock().unwrap() = Some(handle);
+    state.remote_settings.lock().unwrap().enabled = true;
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn stop_remote_push(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    if let Some(handle) = state.remote_push_handle.lock().unwrap().take() {
+        handle.abort();
+    }
+    state.remote_settings.lock().unwrap().enabled = false;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_last_push_time(state: tauri::State<AppState>) -> Result<String, String> {
+    let last_time = state.last_push_time.lock().unwrap();
+    
+    if let Some(time) = *last_time {
+        match time.duration_since(SystemTime::UNIX_EPOCH) {
+            Ok(duration) => {
+                let timestamp = duration.as_secs();
+                // Convert to readable format
+                let now = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                let elapsed = now.saturating_sub(timestamp);
+                
+                let time_str = if elapsed < 60 {
+                    format!("{}秒前", elapsed)
+                } else if elapsed < 3600 {
+                    format!("{}分钟前", elapsed / 60)
+                } else if elapsed < 86400 {
+                    format!("{}小时前", elapsed / 3600)
+                } else {
+                    format!("{}天前", elapsed / 86400)
+                };
+                
+                Ok(time_str)
+            }
+            Err(_) => Err("无法获取时间".to_string()),
+        }
+    } else {
+        Err("暂无推送记录".to_string())
+    }
+}
+
+#[tauri::command]
+async fn test_remote_push(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let remote_settings = state.remote_settings.lock().unwrap().clone();
+    let http_port = state.http_settings.lock().unwrap().port;
+    
+    if remote_settings.url.is_empty() {
+        return Err("远程URL未配置".to_string());
+    }
+
+    // Fetch data from local API
+    let local_url = format!("http://localhost:{}/api/system", http_port);
+    let response = reqwest::get(&local_url)
+        .await
+        .map_err(|e| format!("获取本地数据失败: {}", e))?;
+    
+    let json_data = response.text()
+        .await
+        .map_err(|e| format!("读取响应数据失败: {}", e))?;
+
+    // POST to remote server
+    let client = reqwest::Client::new();
+    let mut request = client
+        .post(&remote_settings.url)
+        .header("Content-Type", "application/json");
+    
+    // Add token header if provided
+    if !remote_settings.token.is_empty() {
+        request = request.header("X-Device-Token", &remote_settings.token);
+    }
+    
+    let resp = request
+        .body(json_data)
+        .send()
+        .await
+        .map_err(|e| format!("推送失败: {}", e))?;
+    
+    if resp.status().is_success() {
+        // Update last push time
+        *state.last_push_time.lock().unwrap() = Some(SystemTime::now());
+        Ok(())
+    } else {
+        Err(format!("推送失败，服务器返回状态码: {}", resp.status()))
+    }
 }
 
 #[tauri::command]
@@ -742,12 +937,18 @@ fn main() {
             get_http_settings,
             get_share_settings,
             get_app_settings,
+            get_remote_settings,
             set_http_port,
             set_share_settings,
             set_app_settings,
+            set_remote_settings,
             set_auto_launch,
             start_http_server,
             stop_http_server,
+            start_remote_push,
+            stop_remote_push,
+            get_last_push_time,
+            test_remote_push,
             get_system_info_dashboard,
             get_processes,
             get_disks,

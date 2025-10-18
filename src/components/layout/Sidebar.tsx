@@ -1,9 +1,9 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Settings, Send } from "lucide-react";
+import { LayoutDashboard, Settings, Send, Info } from "lucide-react";
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
-  onPageChange: (page: "dashboard" | "settings" | "remote") => void;
+  onPageChange: (page: "dashboard" | "settings" | "remote" | "about") => void;
 }
 
 export function Sidebar({ className, onPageChange }: SidebarProps) {
@@ -38,6 +38,14 @@ export function Sidebar({ className, onPageChange }: SidebarProps) {
             >
               <Settings className="mr-2 h-4 w-4" />
               设置
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full justify-start"
+              onClick={() => onPageChange("about")}
+            >
+              <Info className="mr-2 h-4 w-4" />
+              关于
             </Button>
           </div>
         </div>

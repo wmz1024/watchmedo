@@ -1,0 +1,17 @@
+{
+    "name": "watchmedo/remote-monitor",
+    "description": "Remote monitoring system for WatchMeDo application",
+    "type": "project",
+    "require": {
+        "php": ">=7.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "WatchMeDo\\": "includes/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true
+    }
+}
+
