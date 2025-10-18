@@ -3,6 +3,8 @@
 
 use std::sync::{Arc, Mutex};
 use std::net::TcpListener;
+use std::path::PathBuf;
+use std::fs;
 use axum::{
     extract::State,
     routing::get,
@@ -273,6 +275,76 @@ impl AppState {
     }
 }
 
+// 获取配置文件路径
+fn get_config_dir() -> Result<PathBuf, String> {
+    let config_dir = tauri::api::path::config_dir()
+        .ok_or_else(|| "无法获取配置目录".to_string())?;
+    
+    let app_config_dir = config_dir.join("watchmedo");
+    
+    // 确保配置目录存在
+    if !app_config_dir.exists() {
+        fs::create_dir_all(&app_config_dir)
+            .map_err(|e| format!("无法创建配置目录: {}", e))?;
+    }
+    
+    Ok(app_config_dir)
+}
+
+// 获取远程设置文件路径
+fn get_remote_settings_path() -> Result<PathBuf, String> {
+    let config_dir = get_config_dir()?;
+    Ok(config_dir.join("remote_settings.json"))
+}
+
+// 保存远程设置到文件
+fn save_remote_settings(settings: &RemoteSettings) -> Result<(), String> {
+    let path = get_remote_settings_path()?;
+    let json = serde_json::to_string_pretty(settings)
+        .map_err(|e| format!("序列化设置失败: {}", e))?;
+    
+    fs::write(&path, json)
+        .map_err(|e| format!("写入配置文件失败: {}", e))?;
+    
+    println!("远程设置已保存到: {:?}", path);
+    Ok(())
+}
+
+// 从文件加载远程设置
+fn load_remote_settings() -> Option<RemoteSettings> {
+    let path = match get_remote_settings_path() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("获取配置文件路径失败: {}", e);
+            return None;
+        }
+    };
+    
+    if !path.exists() {
+        println!("配置文件不存在，使用默认设置");
+        return None;
+    }
+    
+    match fs::read_to_string(&path) {
+        Ok(content) => {
+            match serde_json::from_str::<RemoteSettings>(&content) {
+                Ok(settings) => {
+                    println!("从文件加载远程设置成功: {:?}", path);
+                    Some(settings)
+                }
+                Err(e) => {
+                    eprintln!("解析配置文件失败: {}", e);
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("读取配置文件失败: {}", e);
+            None
+        }
+    }
+}
+
 #[tauri::command]
 fn get_http_settings(state: tauri::State<AppState>) -> HttpSettings {
     state.http_settings.lock().unwrap().clone()
@@ -309,8 +381,14 @@ fn set_app_settings(settings: AppSettings, state: tauri::State<AppState>) {
 }
 
 #[tauri::command]
-fn set_remote_settings(settings: RemoteSettings, state: tauri::State<AppState>) {
-    *state.remote_settings.lock().unwrap() = settings;
+fn set_remote_settings(settings: RemoteSettings, state: tauri::State<AppState>) -> Result<(), String> {
+    // 保存到状态
+    *state.remote_settings.lock().unwrap() = settings.clone();
+    
+    // 持久化到文件
+    save_remote_settings(&settings)?;
+    
+    Ok(())
 }
 
 #[tauri::command]
@@ -679,8 +757,7 @@ async fn stop_http_server(state: tauri::State<'_, AppState>) -> Result<(), Strin
     Ok(())
 }
 
-#[tauri::command]
-async fn start_remote_push(state: tauri::State<'_, AppState>) -> Result<(), String> {
+async fn start_remote_push_internal(state: AppState) -> Result<(), String> {
     let remote_settings = state.remote_settings.lock().unwrap().clone();
     let http_port = state.http_settings.lock().unwrap().port;
     
@@ -693,7 +770,7 @@ async fn start_remote_push(state: tauri::State<'_, AppState>) -> Result<(), Stri
         handle.abort();
     }
 
-    let state_clone = state.inner().clone();
+    let state_clone = state.clone();
     let handle = tokio::spawn(async move {
         let client = reqwest::Client::new();
         let local_url = format!("http://localhost:{}/api/system", http_port);
@@ -753,7 +830,16 @@ async fn start_remote_push(state: tauri::State<'_, AppState>) -> Result<(), Stri
     *state.remote_push_handle.lock().unwrap() = Some(handle);
     state.remote_settings.lock().unwrap().enabled = true;
     
+    // 保存设置到文件
+    let settings = state.remote_settings.lock().unwrap().clone();
+    save_remote_settings(&settings)?;
+    
     Ok(())
+}
+
+#[tauri::command]
+async fn start_remote_push(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    start_remote_push_internal((*state).clone()).await
 }
 
 #[tauri::command]
@@ -762,6 +848,11 @@ async fn stop_remote_push(state: tauri::State<'_, AppState>) -> Result<(), Strin
         handle.abort();
     }
     state.remote_settings.lock().unwrap().enabled = false;
+    
+    // 保存设置到文件
+    let settings = state.remote_settings.lock().unwrap().clone();
+    save_remote_settings(&settings)?;
+    
     Ok(())
 }
 
@@ -1055,7 +1146,14 @@ fn handle_tray_event(app: &AppHandle, event: SystemTrayEvent) {
 }
 
 fn main() {
-    let app_state = AppState::new();
+    let mut app_state = AppState::new();
+    
+    // 从文件加载远程设置
+    if let Some(saved_settings) = load_remote_settings() {
+        println!("加载保存的远程设置: enabled={}, url={}", saved_settings.enabled, saved_settings.url);
+        // 加载设置但不自动启动，因为需要HTTP服务器先运行
+        *app_state.remote_settings.lock().unwrap() = saved_settings;
+    }
 
     tauri::Builder::default()
         .manage(app_state)
@@ -1086,7 +1184,23 @@ fn main() {
             if app_settings.auto_start_http {
                 let state = app_state.inner().clone();
                 tauri::async_runtime::spawn(async move {
-                    let _ = start_http_server_internal(state).await;
+                    let _ = start_http_server_internal(state.clone()).await;
+                    
+                    // 等待HTTP服务器启动
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                    
+                    // 如果远程推送在上次是启用的，自动重启
+                    let remote_settings = state.remote_settings.lock().unwrap().clone();
+                    if remote_settings.enabled && !remote_settings.url.is_empty() {
+                        println!("自动启动远程推送服务...");
+                        let state_clone = state.clone();
+                        tokio::spawn(async move {
+                            match start_remote_push_internal(state_clone).await {
+                                Ok(_) => println!("远程推送服务已自动启动"),
+                                Err(e) => eprintln!("自动启动远程推送失败: {}", e),
+                            }
+                        });
+                    }
                 });
             }
 

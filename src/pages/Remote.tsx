@@ -50,8 +50,8 @@ export function Remote() {
     try {
       await invoke("set_remote_settings", { settings });
       toast.success("远程推送设置已保存");
-    } catch (error) {
-      toast.error("保存设置失败");
+    } catch (error: any) {
+      toast.error(`保存设置失败: ${error}`);
       console.error(error);
     }
   };
@@ -70,9 +70,11 @@ export function Remote() {
         await invoke("stop_remote_push");
         toast.success("远程推送已停止");
       }
-    } catch (error) {
-      toast.error("切换远程推送状态失败");
+    } catch (error: any) {
+      toast.error(`切换远程推送状态失败: ${error}`);
       console.error(error);
+      // 回滚状态
+      setSettings(settings);
     }
   };
 
