@@ -4,6 +4,9 @@ let deviceId = null;
 let currentDate = null;
 let pieChart = null;
 let barChart = null;
+let refreshInterval = null;
+let countdownInterval = null;
+let countdownSeconds = 10;
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
@@ -28,7 +31,10 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // 刷新按钮
-    document.getElementById('refresh-btn').addEventListener('click', loadDeviceData);
+    document.getElementById('refresh-btn').addEventListener('click', function() {
+        loadDeviceData();
+        loadRealtimeData();
+    });
     
     // AI分析按钮
     document.getElementById('generate-ai-btn').addEventListener('click', generateAIAnalysis);
@@ -41,6 +47,14 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 加载数据
     loadDeviceData();
+    
+    // 启动实时数据自动刷新（每10秒）
+    startRealtimeRefresh();
+});
+
+// 清理定时器
+window.addEventListener('beforeunload', function() {
+    stopRealtimeRefresh();
 });
 
 // 加载设备数据
@@ -365,5 +379,193 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// 启动实时数据刷新
+function startRealtimeRefresh() {
+    // 立即加载一次
+    loadRealtimeData();
+    
+    // 每10秒刷新一次
+    refreshInterval = setInterval(function() {
+        loadRealtimeData();
+    }, 10000);
+    
+    // 倒计时显示
+    startCountdown();
+}
+
+// 停止实时数据刷新
+function stopRealtimeRefresh() {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
+    }
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
+}
+
+// 倒计时
+function startCountdown() {
+    countdownSeconds = 10;
+    updateCountdownDisplay();
+    
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+    }
+    
+    countdownInterval = setInterval(function() {
+        countdownSeconds--;
+        if (countdownSeconds <= 0) {
+            countdownSeconds = 10;
+        }
+        updateCountdownDisplay();
+    }, 1000);
+}
+
+// 更新倒计时显示
+function updateCountdownDisplay() {
+    const countdownEl = document.getElementById('refresh-countdown');
+    if (countdownEl) {
+        countdownEl.textContent = `${countdownSeconds}秒后刷新`;
+    }
+}
+
+// 加载实时数据
+async function loadRealtimeData() {
+    try {
+        const response = await fetch(`../api/stats.php?action=realtime&device_id=${deviceId}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            renderRealtimeData(result.data);
+            // 重置倒计时
+            startCountdown();
+        }
+    } catch (error) {
+        console.error('加载实时数据失败:', error);
+    }
+}
+
+// 渲染实时数据
+function renderRealtimeData(data) {
+    // 渲染正在聚焦的应用
+    renderFocusedApp(data.processes);
+    
+    // 渲染网络流量
+    renderNetworkStats(data.network);
+}
+
+// 渲染正在聚焦的应用
+function renderFocusedApp(processes) {
+    const container = document.getElementById('focused-app');
+    
+    // 找到正在聚焦的应用
+    const focusedApp = processes.find(p => p.is_focused);
+    
+    if (focusedApp) {
+        container.innerHTML = `
+            <div class="flex items-center justify-center space-x-4">
+                <div class="text-center">
+                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-2">
+                        <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                  d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                        </svg>
+                    </div>
+                </div>
+                <div class="text-left flex-1">
+                    <h4 class="text-xl font-bold text-gray-900">${escapeHtml(focusedApp.name)}</h4>
+                    <p class="text-sm text-gray-600 mt-1">${escapeHtml(focusedApp.window_title)}</p>
+                    <div class="flex items-center space-x-4 mt-2">
+                        <span class="text-xs text-gray-500">
+                            <span class="font-semibold">CPU:</span> ${focusedApp.cpu_usage}%
+                        </span>
+                        <span class="text-xs text-gray-500">
+                            <span class="font-semibold">内存:</span> ${focusedApp.memory_formatted}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else {
+        container.innerHTML = `
+            <div class="text-gray-500">
+                <svg class="w-12 h-12 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                </svg>
+                <p class="text-sm">当前无活跃应用</p>
+            </div>
+        `;
+    }
+}
+
+// 渲染网络流量
+function renderNetworkStats(network) {
+    const container = document.getElementById('network-stats');
+    
+    if (network.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-center">暂无网络数据</p>';
+        return;
+    }
+    
+    // 计算总流量
+    let totalReceived = 0;
+    let totalTransmitted = 0;
+    
+    network.forEach(n => {
+        totalReceived += n.received;
+        totalTransmitted += n.transmitted;
+    });
+    
+    container.innerHTML = `
+        <div class="grid grid-cols-2 gap-4 mb-4">
+            <div class="text-center p-4 bg-green-50 rounded-lg">
+                <div class="flex items-center justify-center mb-2">
+                    <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M7 16l-4-4m0 0l4-4m-4 4h18"></path>
+                    </svg>
+                </div>
+                <p class="text-xs text-gray-500">下载</p>
+                <p class="text-lg font-bold text-green-600">${formatBytes(totalReceived)}</p>
+            </div>
+            <div class="text-center p-4 bg-blue-50 rounded-lg">
+                <div class="flex items-center justify-center mb-2">
+                    <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
+                    </svg>
+                </div>
+                <p class="text-xs text-gray-500">上传</p>
+                <p class="text-lg font-bold text-blue-600">${formatBytes(totalTransmitted)}</p>
+            </div>
+        </div>
+        <div class="space-y-2">
+            ${network.map(n => `
+                <div class="border-t border-gray-200 pt-2">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="font-medium text-gray-700">${escapeHtml(n.name)}</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs text-gray-500 mt-1">
+                        <span>↓ ${n.received_formatted}</span>
+                        <span>↑ ${n.transmitted_formatted}</span>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// 格式化字节大小
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 

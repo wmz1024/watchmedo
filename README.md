@@ -35,4 +35,4 @@ npm run tauri build
 
 ## Web端
 
-在client文件夹中
+在client文件夹中 具体请看[client/README.md](client/README.md)

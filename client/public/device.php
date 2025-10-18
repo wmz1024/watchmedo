@@ -52,6 +52,33 @@
 
         <!-- 设备信息 -->
         <div id="device-content" class="hidden">
+            <!-- 实时信息卡片 -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <!-- 当前聚焦应用 -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold text-gray-900">
+                            <span class="inline-flex items-center">
+                                <span class="w-3 h-3 rounded-full bg-green-500 animate-pulse mr-2"></span>
+                                正在使用的应用
+                            </span>
+                        </h3>
+                        <span id="refresh-countdown" class="text-xs text-gray-500">刷新中...</span>
+                    </div>
+                    <div id="focused-app" class="text-center py-4">
+                        <p class="text-gray-500">加载中...</p>
+                    </div>
+                </div>
+
+                <!-- 网络流量 -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">网络流量</h3>
+                    <div id="network-stats" class="space-y-3">
+                        <p class="text-gray-500 text-center py-4">加载中...</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- 设备概览 -->
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
