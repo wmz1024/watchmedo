@@ -8,6 +8,11 @@ let refreshInterval = null;
 let countdownInterval = null;
 let countdownSeconds = 10;
 
+// 分页相关
+let allApps = [];
+let currentPage = 1;
+let itemsPerPage = 10;
+
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
     // 获取设备ID
@@ -126,7 +131,10 @@ function renderDeviceData(data) {
         : '-';
     
     document.getElementById('total-usage').textContent = data.total_usage.formatted;
-    document.getElementById('active-apps').textContent = data.top_apps.length;
+    document.getElementById('active-apps').textContent = data.total_apps_count || data.top_apps.length;
+    
+    // 渲染电池信息（兼容旧版本）
+    renderBatteryInfo(stats);
     
     // 渲染图表
     renderPieChart(data.pie_chart);
@@ -141,8 +149,10 @@ function renderDeviceData(data) {
     // 渲染最常用时间段
     renderActiveHours(data.most_active_hours);
     
-    // 渲染应用列表
-    renderAppList(data.top_apps);
+    // 保存所有应用数据并渲染第一页
+    allApps = data.top_apps;
+    currentPage = 1;
+    renderAppListWithPagination();
 }
 
 // 渲染饼图
@@ -275,22 +285,38 @@ function renderActiveHours(hours) {
     `).join('');
 }
 
-// 渲染应用列表
-function renderAppList(apps) {
+// 渲染应用列表（带分页）
+function renderAppListWithPagination() {
     const container = document.getElementById('app-list');
+    const totalApps = allApps.length;
     
-    if (apps.length === 0) {
-        container.innerHTML = '<p class="text-gray-500 text-center">暂无数据</p>';
+    // 更新应用计数信息
+    document.getElementById('app-count-info').textContent = `共 ${totalApps} 个应用（已过滤0分钟应用）`;
+    
+    if (totalApps === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-center py-8">暂无使用时间超过1分钟的应用</p>';
+        document.getElementById('pagination').classList.add('hidden');
         return;
     }
     
-    container.innerHTML = apps.map((app, index) => `
-        <div class="border border-gray-200 rounded-lg p-4">
+    document.getElementById('pagination').classList.remove('hidden');
+    
+    // 计算分页
+    const totalPages = Math.ceil(totalApps / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = Math.min(startIndex + itemsPerPage, totalApps);
+    const pageApps = allApps.slice(startIndex, endIndex);
+    
+    // 渲染当前页的应用
+    container.innerHTML = pageApps.map((app, index) => {
+        const globalIndex = startIndex + index + 1;
+        return `
+        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
             <div class="flex items-start justify-between mb-2">
                 <div class="flex-1">
                     <div class="flex items-center">
                         <span class="inline-flex items-center justify-center w-6 h-6 rounded bg-blue-100 text-blue-600 text-xs font-bold mr-2">
-                            ${index + 1}
+                            ${globalIndex}
                         </span>
                         <h4 class="text-sm font-semibold text-gray-900">${escapeHtml(app.name)}</h4>
                     </div>
@@ -313,7 +339,95 @@ function renderAppList(apps) {
                 </div>
             </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
+    
+    // 更新分页信息
+    document.getElementById('page-start').textContent = startIndex + 1;
+    document.getElementById('page-end').textContent = endIndex;
+    document.getElementById('total-apps').textContent = totalApps;
+    
+    // 渲染分页按钮
+    renderPagination(totalPages);
+}
+
+// 渲染分页控件
+function renderPagination(totalPages) {
+    const container = document.getElementById('pagination-buttons');
+    
+    if (totalPages <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    let buttons = [];
+    
+    // 上一页按钮
+    buttons.push(`
+        <button onclick="changePage(${currentPage - 1})" 
+                ${currentPage === 1 ? 'disabled' : ''}
+                class="px-3 py-1 border border-gray-300 rounded-md text-sm ${currentPage === 1 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'}">
+            ← 上一页
+        </button>
+    `);
+    
+    // 页码按钮
+    const maxButtons = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+    let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+    
+    if (endPage - startPage < maxButtons - 1) {
+        startPage = Math.max(1, endPage - maxButtons + 1);
+    }
+    
+    if (startPage > 1) {
+        buttons.push(`<button onclick="changePage(1)" class="px-3 py-1 border border-gray-300 rounded-md text-sm bg-white text-gray-700 hover:bg-gray-50">1</button>`);
+        if (startPage > 2) {
+            buttons.push(`<span class="px-2 text-gray-500">...</span>`);
+        }
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        buttons.push(`
+            <button onclick="changePage(${i})" 
+                    class="px-3 py-1 border rounded-md text-sm ${i === currentPage ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}">
+                ${i}
+            </button>
+        `);
+    }
+    
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            buttons.push(`<span class="px-2 text-gray-500">...</span>`);
+        }
+        buttons.push(`<button onclick="changePage(${totalPages})" class="px-3 py-1 border border-gray-300 rounded-md text-sm bg-white text-gray-700 hover:bg-gray-50">${totalPages}</button>`);
+    }
+    
+    // 下一页按钮
+    buttons.push(`
+        <button onclick="changePage(${currentPage + 1})" 
+                ${currentPage === totalPages ? 'disabled' : ''}
+                class="px-3 py-1 border border-gray-300 rounded-md text-sm ${currentPage === totalPages ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'}">
+            下一页 →
+        </button>
+    `);
+    
+    container.innerHTML = buttons.join('');
+}
+
+// 切换页码
+function changePage(page) {
+    const totalPages = Math.ceil(allApps.length / itemsPerPage);
+    
+    if (page < 1 || page > totalPages) {
+        return;
+    }
+    
+    currentPage = page;
+    renderAppListWithPagination();
+    
+    // 滚动到应用列表顶部
+    document.getElementById('app-list').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // 生成AI分析
@@ -372,6 +486,22 @@ function formatUptime(seconds) {
     if (minutes > 0) parts.push(`${minutes}分钟`);
     
     return parts.join(' ') || '0分钟';
+}
+
+// 格式化停留时间（包含秒）
+function formatDuration(seconds) {
+    if (seconds < 0) seconds = 0;
+    
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    
+    const parts = [];
+    if (hours > 0) parts.push(`${hours}小时`);
+    if (minutes > 0) parts.push(`${minutes}分钟`);
+    parts.push(`${secs}秒`);
+    
+    return parts.join(' ');
 }
 
 // HTML转义
@@ -507,25 +637,42 @@ function renderFocusedApp(processes) {
     
     if (focusedApp) {
         container.innerHTML = `
-            <div class="flex items-center justify-center space-x-4">
-                <div class="text-center">
-                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-2">
-                        <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                  d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-                        </svg>
+            <div class="space-y-3">
+                <div class="flex items-center justify-center space-x-4">
+                    <div class="text-center">
+                        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-2">
+                            <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="text-left flex-1">
+                        <h4 class="text-xl font-bold text-gray-900">${escapeHtml(focusedApp.name)}</h4>
+                        <p class="text-sm text-gray-600 mt-1">${escapeHtml(focusedApp.window_title)}</p>
+                        <div class="flex items-center space-x-4 mt-2">
+                            <span class="text-xs text-gray-500">
+                                <span class="font-semibold">CPU:</span> ${focusedApp.cpu_usage}%
+                            </span>
+                            <span class="text-xs text-gray-500">
+                                <span class="font-semibold">内存:</span> ${focusedApp.memory_formatted}
+                            </span>
+                        </div>
                     </div>
                 </div>
-                <div class="text-left flex-1">
-                    <h4 class="text-xl font-bold text-gray-900">${escapeHtml(focusedApp.name)}</h4>
-                    <p class="text-sm text-gray-600 mt-1">${escapeHtml(focusedApp.window_title)}</p>
-                    <div class="flex items-center space-x-4 mt-2">
-                        <span class="text-xs text-gray-500">
-                            <span class="font-semibold">CPU:</span> ${focusedApp.cpu_usage}%
-                        </span>
-                        <span class="text-xs text-gray-500">
-                            <span class="font-semibold">内存:</span> ${focusedApp.memory_formatted}
-                        </span>
+                
+                <!-- 连续停留时间显示 -->
+                <div class="border-t border-gray-200 pt-3">
+                    <div class="flex items-center justify-center space-x-2">
+                        <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <span class="text-sm text-gray-600">连续停留:</span>
+                        <span class="text-lg font-bold text-blue-600">${escapeHtml(focusedApp.focused_duration_formatted || '0秒')}</span>
+                    </div>
+                    <div class="text-center mt-1">
+                        <span class="text-xs text-gray-400">未切换其他应用的持续时间 (精确到秒)</span>
                     </div>
                 </div>
             </div>
@@ -614,5 +761,98 @@ function formatBytes(bytes) {
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// 渲染电池信息（兼容旧版本）
+function renderBatteryInfo(stats) {
+    const batteryContainer = document.getElementById('battery-info');
+    
+    // 检查是否有电池数据（兼容旧版本）
+    if (!stats || stats.battery_percentage === null || stats.battery_percentage === undefined) {
+        batteryContainer.classList.add('hidden');
+        return;
+    }
+    
+    // 显示电池信息
+    batteryContainer.classList.remove('hidden');
+    
+    const percentage = parseFloat(stats.battery_percentage) || 0;
+    const isCharging = Boolean(stats.battery_is_charging);
+    const status = stats.battery_status || '未知';
+    
+    // 更新显示
+    document.getElementById('battery-percentage').textContent = percentage.toFixed(0) + '%';
+    document.getElementById('battery-status').textContent = status;
+    
+    // 更新进度条
+    const batteryBar = document.getElementById('battery-bar');
+    batteryBar.style.width = percentage + '%';
+    
+    // 根据电量和充电状态设置颜色
+    let barColor = '';
+    let textColor = '';
+    let iconColor = '';
+    
+    if (isCharging) {
+        barColor = 'bg-green-500';
+        textColor = 'text-green-600';
+        iconColor = 'text-green-600';
+    } else if (percentage > 50) {
+        barColor = 'bg-blue-500';
+        textColor = 'text-blue-600';
+        iconColor = 'text-blue-600';
+    } else if (percentage > 20) {
+        barColor = 'bg-yellow-500';
+        textColor = 'text-yellow-600';
+        iconColor = 'text-yellow-600';
+    } else {
+        barColor = 'bg-red-500';
+        textColor = 'text-red-600';
+        iconColor = 'text-red-600';
+    }
+    
+    batteryBar.className = `h-3 rounded-full transition-all duration-300 ${barColor}`;
+    document.getElementById('battery-percentage').className = `text-4xl font-bold ${textColor}`;
+    document.getElementById('battery-status').className = `mt-1 text-xl font-semibold ${textColor}`;
+    
+    // 更新电池图标
+    const batteryIcon = document.getElementById('battery-icon');
+    batteryIcon.className = `w-8 h-8 ${iconColor}`;
+    
+    // 根据充电状态和电量显示不同图标
+    if (isCharging) {
+        batteryIcon.innerHTML = `
+            <path d="M3.5 6A1.5 1.5 0 015 4.5h7A1.5 1.5 0 0113.5 6v12a1.5 1.5 0 01-1.5 1.5H5A1.5 1.5 0 013.5 18V6z"/>
+            <path d="M7 12l3-3v3h2l-3 3v-3H7z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"/>
+            <path d="M15.5 10v4M17.5 10v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        `;
+    } else {
+        // 根据电量显示不同的电池图标
+        const level = percentage > 75 ? 'full' : percentage > 50 ? 'high' : percentage > 25 ? 'medium' : 'low';
+        batteryIcon.innerHTML = getBatteryIconSVG(level);
+    }
+}
+
+// 获取电池图标SVG
+function getBatteryIconSVG(level) {
+    const base = '<rect x="2" y="6" width="18" height="12" rx="1" stroke="currentColor" fill="none" stroke-width="1.5"/><rect x="20" y="9" width="2" height="6" rx="1" fill="currentColor"/>';
+    
+    let fill = '';
+    switch(level) {
+        case 'full':
+            fill = '<rect x="4" y="8" width="14" height="8" rx="0.5" fill="currentColor"/>';
+            break;
+        case 'high':
+            fill = '<rect x="4" y="8" width="10" height="8" rx="0.5" fill="currentColor"/>';
+            break;
+        case 'medium':
+            fill = '<rect x="4" y="8" width="7" height="8" rx="0.5" fill="currentColor"/>';
+            break;
+        case 'low':
+            fill = '<rect x="4" y="8" width="4" height="8" rx="0.5" fill="currentColor"/>';
+            break;
+    }
+    
+    return base + fill;
 }
 

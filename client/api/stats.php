@@ -120,6 +120,11 @@ switch ($action) {
         
         $mostActiveHours = array_slice($hourlyStats, 0, 5);
         
+        // 过滤掉使用时间少于60秒（1分钟）的应用
+        $filteredAppUsage = array_filter($appUsage, function($app) {
+            return $app['total_seconds'] >= 60;
+        });
+        
         $result = [
             'device' => [
                 'id' => $device['id'],
@@ -146,12 +151,13 @@ switch ($action) {
                     'avg_memory' => $app['avg_memory'],
                     'avg_memory_formatted' => formatBytes($app['avg_memory'])
                 ];
-            }, $appUsage),
+            }, $filteredAppUsage),
             'most_active_hours' => $mostActiveHours,
             'total_usage' => [
                 'seconds' => $totalUsageSeconds,
                 'formatted' => formatUptime($totalUsageSeconds)
-            ]
+            ],
+            'total_apps_count' => count($filteredAppUsage)
         ];
         
         successResponse($result);
@@ -207,63 +213,92 @@ switch ($action) {
         }
         
         // 格式化进程数据
-        $processes = array_map(function($p) use ($db, $deviceId) {
+        $processes = array_map(function($p) use ($db, $deviceId, $timestamp) {
             $focusedDuration = 0;
+            $focusedDurationFormatted = '0秒';
             
-            // 如果是聚焦的应用，计算停留时间
+            // 如果是聚焦的应用，计算连续停留时间（在PHP端计算）
             if ($p['is_focused']) {
-                // 获取这个应用最近连续聚焦的时间段
-                // 查找最早的连续聚焦记录
-                $firstFocusedTime = $db->fetchOne(
-                    'SELECT MIN(timestamp) as first_time 
-                     FROM (
-                         SELECT timestamp, executable_name, window_title,
-                                LAG(is_focused) OVER (ORDER BY timestamp) as prev_focused
-                         FROM process_records 
-                         WHERE device_id = ? 
-                           AND executable_name = ? 
-                           AND window_title = ?
-                         ORDER BY timestamp DESC 
-                         LIMIT 100
-                     ) sub
-                     WHERE is_focused = 1 AND (prev_focused = 0 OR prev_focused IS NULL)',
-                    [$deviceId, $p['executable_name'], $p['window_title']]
+                $currentAppName = $p['executable_name'];
+                $currentTime = strtotime($p['timestamp']);
+                
+                // 获取当前应用最近的所有记录（按时间倒序）
+                $appRecords = $db->fetchAll(
+                    'SELECT timestamp, is_focused 
+                     FROM process_records 
+                     WHERE device_id = ? 
+                       AND executable_name = ?
+                       AND timestamp <= ?
+                     ORDER BY timestamp DESC 
+                     LIMIT 100',
+                    [$deviceId, $currentAppName, $p['timestamp']]
                 );
                 
-                // 如果查询不支持窗口函数，使用简单方法：查找最近的非聚焦记录之后的时间
-                if (!$firstFocusedTime) {
-                    $lastUnfocusedRecord = $db->fetchOne(
-                        'SELECT timestamp FROM process_records 
+                // 查找连续聚焦的起始时间
+                $startTime = $currentTime;
+                $consecutiveFocused = true;
+                
+                foreach ($appRecords as $record) {
+                    if ($record['is_focused'] == 0) {
+                        // 找到非聚焦记录，说明连续聚焦在这之后开始
+                        $consecutiveFocused = false;
+                        break;
+                    }
+                    // 如果一直是聚焦状态，更新起始时间
+                    $startTime = strtotime($record['timestamp']);
+                }
+                
+                // 如果一直是聚焦状态，还需要检查是否有其他应用获得过焦点
+                if ($consecutiveFocused) {
+                    // 查询同时间段内是否有其他应用获得焦点
+                    $otherFocusedApp = $db->fetchOne(
+                        'SELECT timestamp 
+                         FROM process_records 
                          WHERE device_id = ? 
-                           AND executable_name = ? 
-                           AND is_focused = 0 
+                           AND executable_name != ?
+                           AND is_focused = 1
+                           AND timestamp > ?
                            AND timestamp < ?
                          ORDER BY timestamp DESC 
                          LIMIT 1',
-                        [$deviceId, $p['executable_name'], $p['timestamp']]
+                        [$deviceId, $currentAppName, date('Y-m-d H:i:s', $startTime), $p['timestamp']]
                     );
                     
-                    if ($lastUnfocusedRecord) {
-                        $startTime = strtotime($lastUnfocusedRecord['timestamp']);
-                    } else {
-                        // 如果找不到之前的非聚焦记录，查找这个应用最早的聚焦记录
-                        $firstRecord = $db->fetchOne(
-                            'SELECT timestamp FROM process_records 
+                    if ($otherFocusedApp) {
+                        // 有其他应用获得过焦点，找到当前应用重新获得焦点的时间
+                        $regainFocus = $db->fetchOne(
+                            'SELECT timestamp 
+                             FROM process_records 
                              WHERE device_id = ? 
-                               AND executable_name = ? 
-                               AND is_focused = 1 
+                               AND executable_name = ?
+                               AND is_focused = 1
+                               AND timestamp > ?
+                               AND timestamp <= ?
                              ORDER BY timestamp ASC 
                              LIMIT 1',
-                            [$deviceId, $p['executable_name']]
+                            [$deviceId, $currentAppName, $otherFocusedApp['timestamp'], $p['timestamp']]
                         );
-                        $startTime = $firstRecord ? strtotime($firstRecord['timestamp']) : strtotime($p['timestamp']);
+                        
+                        if ($regainFocus) {
+                            $startTime = strtotime($regainFocus['timestamp']);
+                        }
                     }
-                } else {
-                    $startTime = strtotime($firstFocusedTime['first_time']);
                 }
                 
-                $currentTime = strtotime($p['timestamp']);
+                // 计算连续停留时间（秒）
                 $focusedDuration = max(0, $currentTime - $startTime);
+                
+                // 格式化时间（PHP端格式化，包含秒）
+                $hours = floor($focusedDuration / 3600);
+                $minutes = floor(($focusedDuration % 3600) / 60);
+                $seconds = $focusedDuration % 60;
+                
+                $parts = [];
+                if ($hours > 0) $parts[] = $hours . '小时';
+                if ($minutes > 0) $parts[] = $minutes . '分钟';
+                $parts[] = $seconds . '秒';
+                
+                $focusedDurationFormatted = implode(' ', $parts);
             }
             
             return [
@@ -274,7 +309,7 @@ switch ($action) {
                 'memory_formatted' => formatBytes($p['memory_usage']),
                 'is_focused' => (bool)$p['is_focused'],
                 'focused_duration' => $focusedDuration,
-                'focused_duration_formatted' => formatUptime($focusedDuration)
+                'focused_duration_formatted' => $focusedDurationFormatted
             ];
         }, $latestProcesses);
         

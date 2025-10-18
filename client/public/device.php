@@ -126,6 +126,29 @@
                 </div>
             </div>
 
+            <!-- 电池信息（仅笔记本显示，兼容旧版本） -->
+            <div id="battery-info" class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6 hidden">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                        <svg id="battery-icon" class="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                            <!-- 电池图标将通过JavaScript动态设置 -->
+                        </svg>
+                        <div>
+                            <p class="text-sm text-gray-500">电池状态</p>
+                            <p class="mt-1 text-xl font-semibold" id="battery-status">-</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-4xl font-bold" id="battery-percentage">-</p>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <div class="w-full bg-gray-200 rounded-full h-3">
+                        <div id="battery-bar" class="h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- 图表 -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 <!-- 应用使用时间饼图 -->
@@ -151,9 +174,23 @@
 
             <!-- 应用详细列表 -->
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <h3 class="text-lg font-semibold text-gray-900 mb-4">应用使用详情</h3>
-                <div id="app-list" class="space-y-4">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">应用使用详情</h3>
+                    <div class="text-sm text-gray-500">
+                        <span id="app-count-info">-</span>
+                    </div>
+                </div>
+                <div id="app-list" class="space-y-4 mb-4">
                     <!-- 动态生成 -->
+                </div>
+                <!-- 分页控件 -->
+                <div id="pagination" class="flex items-center justify-between border-t border-gray-200 pt-4">
+                    <div class="text-sm text-gray-500" id="pagination-info">
+                        显示 <span id="page-start">0</span> - <span id="page-end">0</span> / 共 <span id="total-apps">0</span> 个应用
+                    </div>
+                    <div class="flex space-x-2" id="pagination-buttons">
+                        <!-- 动态生成分页按钮 -->
+                    </div>
                 </div>
             </div>
 

@@ -22,6 +22,22 @@
     <pre id="response">等待测试...</pre>
     
     <script>
+        // 格式化时间（包含秒）
+        function formatDurationTest(seconds) {
+            if (seconds < 0) seconds = 0;
+            
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            
+            const parts = [];
+            if (hours > 0) parts.push(`${hours}小时`);
+            if (minutes > 0) parts.push(`${minutes}分钟`);
+            parts.push(`${secs}秒`);
+            
+            return parts.join(' ');
+        }
+        
         async function testAPI() {
             const deviceId = document.getElementById('deviceId').value;
             const responseEl = document.getElementById('response');
@@ -48,6 +64,10 @@
                         responseEl.innerHTML += `\n聚焦的应用数量: ${focusedApps.length}\n`;
                         if (focusedApps.length > 0) {
                             responseEl.innerHTML += `聚焦应用: ${focusedApps[0].name}\n`;
+                            responseEl.innerHTML += `窗口标题: ${focusedApps[0].window_title}\n`;
+                            responseEl.innerHTML += `连续停留秒数: ${focusedApps[0].focused_duration}秒\n`;
+                            responseEl.innerHTML += `PHP格式化显示: ${focusedApps[0].focused_duration_formatted}\n`;
+                            responseEl.innerHTML += `前端格式化显示: ${formatDurationTest(focusedApps[0].focused_duration)}\n`;
                         }
                     }
                 }

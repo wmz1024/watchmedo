@@ -163,6 +163,9 @@ class Database {
             memory_total BIGINT,
             memory_used BIGINT,
             memory_percent REAL,
+            battery_percentage REAL,
+            battery_is_charging INTEGER,
+            battery_status TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
         );
@@ -245,6 +248,9 @@ class Database {
             memory_total BIGINT,
             memory_used BIGINT,
             memory_percent FLOAT,
+            battery_percentage FLOAT,
+            battery_is_charging TINYINT,
+            battery_status VARCHAR(50),
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
             INDEX idx_device_timestamp (device_id, timestamp)

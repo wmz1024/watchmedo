@@ -9,7 +9,7 @@ use axum::{
     Router, Json,
 };
 use serde::{Deserialize, Serialize};
-use sysinfo::{System, Networks, Disks};
+use sysinfo::{System, Networks, Disks, Components};
 use tauri::{
     Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem, 
     CustomMenuItem, AppHandle, WindowEvent
@@ -150,6 +150,14 @@ struct SystemInfo {
     processes: Option<Vec<ProcessInfo>>,
     disks: Option<Vec<DiskInfo>>,
     network: Option<Vec<NetworkInfo>>,
+    battery: Option<BatteryInfo>,
+}
+
+#[derive(Serialize, Clone)]
+struct BatteryInfo {
+    percentage: f32,      // 电量百分比 0-100
+    is_charging: bool,    // 是否正在充电
+    status: String,       // 状态文本
 }
 
 #[derive(Serialize)]
@@ -456,6 +464,9 @@ async fn get_system_info(State(state): State<Arc<AppState>>) -> Json<SystemInfo>
         None
     };
 
+    // 获取电池信息（如果是笔记本）
+    let battery = get_battery_info();
+
     Json(SystemInfo {
         computer_name,
         uptime,
@@ -464,7 +475,157 @@ async fn get_system_info(State(state): State<Arc<AppState>>) -> Json<SystemInfo>
         processes,
         disks,
         network,
+        battery,
     })
+}
+
+// 获取电池信息
+fn get_battery_info() -> Option<BatteryInfo> {
+    // 尝试使用sysinfo获取电池信息
+    // 注意：sysinfo 0.30版本对电池支持有限，可能需要使用其他方法
+    
+    #[cfg(target_os = "windows")]
+    {
+        // Windows系统：通过WMI或其他方式获取
+        return get_battery_info_windows();
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        // Linux系统：从/sys/class/power_supply读取
+        return get_battery_info_linux();
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        // macOS系统：使用IOKit
+        return get_battery_info_macos();
+    }
+    
+    #[allow(unreachable_code)]
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn get_battery_info_windows() -> Option<BatteryInfo> {
+    use std::process::Command;
+    
+    // 使用WMIC命令获取电池信息
+    let output = Command::new("WMIC")
+        .args(&["Path", "Win32_Battery", "Get", "EstimatedChargeRemaining,BatteryStatus"])
+        .output()
+        .ok()?;
+    
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = output_str.lines().collect();
+    
+    if lines.len() < 2 {
+        return None; // 没有电池
+    }
+    
+    // 解析输出
+    for line in lines.iter().skip(1) {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 2 {
+            if let (Ok(status), Ok(percentage)) = (parts[0].parse::<u32>(), parts[1].parse::<f32>()) {
+                let is_charging = status == 2; // 2表示正在充电
+                let status_text = if is_charging {
+                    "充电中".to_string()
+                } else if percentage > 20.0 {
+                    "使用电池".to_string()
+                } else {
+                    "电量低".to_string()
+                };
+                
+                return Some(BatteryInfo {
+                    percentage,
+                    is_charging,
+                    status: status_text,
+                });
+            }
+        }
+    }
+    
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn get_battery_info_linux() -> Option<BatteryInfo> {
+    use std::fs;
+    
+    // 尝试从 /sys/class/power_supply/BAT0 或 BAT1 读取
+    for bat in &["BAT0", "BAT1"] {
+        let base_path = format!("/sys/class/power_supply/{}", bat);
+        
+        if let (Ok(capacity), Ok(status)) = (
+            fs::read_to_string(format!("{}/capacity", base_path)),
+            fs::read_to_string(format!("{}/status", base_path))
+        ) {
+            if let Ok(percentage) = capacity.trim().parse::<f32>() {
+                let status = status.trim();
+                let is_charging = status == "Charging" || status == "Full";
+                let status_text = match status {
+                    "Charging" => "充电中",
+                    "Discharging" => "使用电池",
+                    "Full" => "已充满",
+                    _ => "未知"
+                }.to_string();
+                
+                return Some(BatteryInfo {
+                    percentage,
+                    is_charging,
+                    status: status_text,
+                });
+            }
+        }
+    }
+    
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn get_battery_info_macos() -> Option<BatteryInfo> {
+    use std::process::Command;
+    
+    // 使用pmset命令获取电池信息
+    let output = Command::new("pmset")
+        .args(&["-g", "batt"])
+        .output()
+        .ok()?;
+    
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    
+    // 解析输出，格式类似：Now drawing from 'Battery Power'
+    //  -InternalBattery-0 (id=1234567)	85%; discharging; 5:23 remaining
+    for line in output_str.lines() {
+        if line.contains("InternalBattery") {
+            // 解析百分比
+            if let Some(percent_pos) = line.find('%') {
+                let before_percent = &line[..percent_pos];
+                if let Some(tab_pos) = before_percent.rfind('\t') {
+                    let percent_str = &before_percent[tab_pos+1..].trim();
+                    if let Ok(percentage) = percent_str.parse::<f32>() {
+                        let is_charging = line.contains("charging") && !line.contains("discharging");
+                        let status_text = if line.contains("charged") || line.contains("charged") {
+                            "已充满"
+                        } else if is_charging {
+                            "充电中"
+                        } else {
+                            "使用电池"
+                        }.to_string();
+                        
+                        return Some(BatteryInfo {
+                            percentage,
+                            is_charging,
+                            status: status_text,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    None
 }
 
 async fn start_http_server_internal(state: AppState) -> Result<(), String> {

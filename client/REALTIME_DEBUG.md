@@ -94,7 +94,9 @@ http://your-domain/client/api/stats.php?action=realtime&device_id=1
         "cpu_usage": 5.2,
         "memory_usage": 524288000,
         "memory_formatted": "500 MB",
-        "is_focused": true
+        "is_focused": true,
+        "focused_duration": 300,
+        "focused_duration_formatted": "5分钟"
       }
     ],
     "network": [
@@ -163,6 +165,71 @@ refreshInterval = setInterval(function() {
 }
 ```
 
+## 连续停留时间计算说明
+
+### 计算逻辑
+
+系统通过以下方式计算当前聚焦应用的**连续停留时间**：
+
+1. 从当前时间点向前查找所有应用的历史记录（最多100条）
+2. 检测焦点是否发生切换，满足以下任一条件则停止回溯：
+   - **情况1**：同一应用变为非聚焦状态（is_focused=0）
+   - **情况2**：其他应用获得焦点（is_focused=1）
+3. 从检测到切换的时间点到当前时间，即为连续停留时间
+4. 如果一直没有切换，使用最早的聚焦记录时间
+
+**关键特性**：如果用户中途切换到其他应用，再切回来时会重新计算，不累计之前的时间。
+
+### 连续停留时间示例
+
+#### 场景1：连续使用
+```
+时间线: Chrome -> Chrome -> Chrome -> Chrome (当前)
+         1         1         1         1
+
+连续停留 = 当前时间 - 最早的Chrome聚焦时间
+结果：20分钟（连续使用）
+```
+
+#### 场景2：中途切换
+```
+时间线: Chrome -> Chrome -> VSCode -> Chrome -> Chrome (当前)
+         1         1         1         1         1
+         10:00     10:05     10:10     10:15     10:20
+
+连续停留 = 当前时间(10:20) - 最近一次切回Chrome的时间(10:15)
+结果：5分钟（从10:15重新计算）
+```
+
+#### 场景3：失去焦点后恢复
+```
+时间线: Chrome -> Chrome -> Chrome -> Chrome -> Chrome (当前)
+         1         1         0         1         1
+         10:00     10:05     10:10     10:15     10:20
+
+连续停留 = 当前时间(10:20) - 失去焦点后重新获得的时间(10:15)
+结果：5分钟（从10:15重新计算）
+```
+
+### 检查停留时间数据
+
+```sql
+-- 查看某个应用的聚焦历史
+SELECT 
+    timestamp, 
+    executable_name, 
+    is_focused,
+    CASE 
+        WHEN is_focused = 1 THEN '聚焦'
+        ELSE '未聚焦'
+    END as status
+FROM process_records 
+WHERE device_id = 1 
+  AND executable_name = 'chrome.exe'
+ORDER BY timestamp DESC 
+LIMIT 20;
+```
+
 ## 需要帮助?
 
 如果以上步骤都无法解决问题，请：
@@ -170,4 +237,5 @@ refreshInterval = setInterval(function() {
 1. 导出数据库中最新的几条记录
 2. 提供浏览器控制台的完整日志
 3. 提供API响应的完整内容
+4. 检查聚焦应用的历史记录（is_focused字段变化）
 

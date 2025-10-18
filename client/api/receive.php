@@ -70,9 +70,20 @@ try {
     $memoryUsed = $data['memory_usage']['used'] ?? 0;
     $memoryPercent = $data['memory_usage']['percent'] ?? 0;
     
+    // 电池信息（可选，兼容旧版本）
+    $batteryPercentage = null;
+    $batteryIsCharging = null;
+    $batteryStatus = null;
+    
+    if (isset($data['battery']) && is_array($data['battery'])) {
+        $batteryPercentage = $data['battery']['percentage'] ?? null;
+        $batteryIsCharging = isset($data['battery']['is_charging']) ? (int)$data['battery']['is_charging'] : null;
+        $batteryStatus = $data['battery']['status'] ?? null;
+    }
+    
     $db->execute(
-        'INSERT INTO device_stats (device_id, timestamp, computer_name, uptime, cpu_usage_avg, memory_total, memory_used, memory_percent) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO device_stats (device_id, timestamp, computer_name, uptime, cpu_usage_avg, memory_total, memory_used, memory_percent, battery_percentage, battery_is_charging, battery_status) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
             $deviceId,
             $timestamp,
@@ -81,7 +92,10 @@ try {
             $cpuUsageAvg,
             $memoryTotal,
             $memoryUsed,
-            $memoryPercent
+            $memoryPercent,
+            $batteryPercentage,
+            $batteryIsCharging,
+            $batteryStatus
         ]
     );
     
