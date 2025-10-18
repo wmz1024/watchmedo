@@ -587,10 +587,16 @@ fn get_battery_info() -> Option<BatteryInfo> {
 #[cfg(target_os = "windows")]
 fn get_battery_info_windows() -> Option<BatteryInfo> {
     use std::process::Command;
+    use std::os::windows::process::CommandExt;
     
-    // 使用WMIC命令获取电池信息
+    // CREATE_NO_WINDOW = 0x08000000
+    // 使用此标志防止创建新的控制台窗口
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    
+    // 使用WMIC命令获取电池信息，但不显示窗口
     let output = Command::new("WMIC")
         .args(&["Path", "Win32_Battery", "Get", "EstimatedChargeRemaining,BatteryStatus"])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .ok()?;
     
