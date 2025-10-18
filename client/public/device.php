@@ -151,6 +151,20 @@
         </div>
     </div>
 
+    <!-- 页脚 -->
+    <footer class="bg-white border-t border-gray-200 mt-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <p class="text-center text-sm text-gray-600">
+                Powered by <span class="font-semibold text-gray-900">WatchMeDo</span> with <span class="text-red-500">❤</span>
+                <span class="mx-2">·</span>
+                <a href="https://github.com/wmz1024/watchmedo" target="_blank" rel="noopener noreferrer" 
+                   class="text-blue-600 hover:text-blue-800 hover:underline">
+                    GitHub
+                </a>
+            </p>
+        </div>
+    </footer>
+
     <script src="assets/js/device.js"></script>
 </body>
 </html>
