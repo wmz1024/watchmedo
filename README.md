@@ -32,3 +32,7 @@ npm run tauri dev
 # 构建应用
 npm run tauri build
 ```
+
+## Web端
+
+在client文件夹中
