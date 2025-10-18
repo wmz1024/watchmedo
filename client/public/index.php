@@ -63,7 +63,7 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- 首页标题和简介 -->
         <div id="page-header" class="mb-8 text-center">
-            <h1 class="text-4xl font-bold text-gray-900 mb-4" id="page-title">设备监控中心</h1>
+            <h1 class="text-4xl font-bold text-gray-900 mb-4" id="page-title">Watch Me Do</h1>
             <p class="text-lg text-gray-600 max-w-3xl mx-auto" id="page-description">实时监控您的设备运行状态，追踪应用使用情况</p>
         </div>
         
