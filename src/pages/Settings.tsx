@@ -31,6 +31,13 @@ interface AppSettings {
   process_limit: number;
 }
 
+interface MediaSettings {
+  enabled: boolean;
+  send_thumbnail: boolean;
+  compress_thumbnail: boolean;
+  thumbnail_max_size_kb: number;
+}
+
 export function Settings() {
   const [httpPort, setHttpPort] = useState<number>(21536);
   const [httpRunning, setHttpRunning] = useState<boolean>(false);
@@ -49,6 +56,12 @@ export function Settings() {
     silent_launch: false,
     process_limit: 20,
   });
+  const [mediaSettings, setMediaSettings] = useState<MediaSettings>({
+    enabled: true,
+    send_thumbnail: false,
+    compress_thumbnail: true,
+    thumbnail_max_size_kb: 16,
+  });
   const [previewUrl, setPreviewUrl] = useState<string>("");
 
   useEffect(() => {
@@ -60,14 +73,29 @@ export function Settings() {
       const httpSettings = await invoke<HttpSettings>("get_http_settings");
       const share = await invoke<ShareSettings>("get_share_settings");
       const app = await invoke<AppSettings>("get_app_settings");
+      const media = await invoke<MediaSettings>("get_media_settings");
       
       setHttpPort(httpSettings.port);
       setHttpRunning(httpSettings.is_running);
       setShareSettings(share);
       setAppSettings(app);
+      setMediaSettings(media);
       setPreviewUrl(`http://localhost:${httpSettings.port}/api/system`);
     } catch (error) {
       console.error("Failed to load settings:", error);
+    }
+  };
+
+  const handleMediaSettingChange = async (key: keyof MediaSettings, value: boolean | number) => {
+    const newSettings = { ...mediaSettings, [key]: value };
+    setMediaSettings(newSettings);
+    
+    try {
+      await invoke("set_media_settings", { settings: newSettings });
+      toast.success("媒体监控设置已更新");
+    } catch (error) {
+      toast.error("更新媒体监控设置失败");
+      console.error(error);
     }
   };
 
@@ -380,6 +408,121 @@ export function Settings() {
               >
                 保存
               </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>媒体播放监控设置</CardTitle>
+          <CardDescription>配置媒体播放状态监控功能（仅Windows）</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>启用媒体监控</Label>
+              <p className="text-sm text-muted-foreground">监控当前播放的音乐/视频信息</p>
+            </div>
+            <Switch
+              checked={mediaSettings.enabled}
+              onCheckedChange={(checked) => handleMediaSettingChange("enabled", checked)}
+            />
+          </div>
+
+          <Separator />
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>发送封面缩略图</Label>
+              <p className="text-sm text-muted-foreground">
+                上传媒体封面到服务器（会增加网络流量和存储）
+              </p>
+            </div>
+            <Switch
+              disabled={!mediaSettings.enabled}
+              checked={mediaSettings.send_thumbnail}
+              onCheckedChange={(checked) => handleMediaSettingChange("send_thumbnail", checked)}
+            />
+          </div>
+
+          <Separator />
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>压缩缩略图</Label>
+              <p className="text-sm text-muted-foreground">
+                压缩图片以减少存储空间和网络流量
+              </p>
+            </div>
+            <Switch
+              disabled={!mediaSettings.enabled || !mediaSettings.send_thumbnail}
+              checked={mediaSettings.compress_thumbnail}
+              onCheckedChange={(checked) => handleMediaSettingChange("compress_thumbnail", checked)}
+            />
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <Label htmlFor="thumbnail-size">缩略图最大大小 (KB)</Label>
+            <p className="text-sm text-muted-foreground">
+              压缩后的图片最大大小，较小的值会降低图片质量但节省空间
+            </p>
+            <div className="flex items-center space-x-4">
+              <Input
+                id="thumbnail-size"
+                type="number"
+                min="4"
+                max="64"
+                disabled={!mediaSettings.enabled || !mediaSettings.send_thumbnail || !mediaSettings.compress_thumbnail}
+                value={mediaSettings.thumbnail_max_size_kb}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value) || 16;
+                  setMediaSettings({ ...mediaSettings, thumbnail_max_size_kb: value });
+                }}
+                className="w-32"
+              />
+              <Button
+                disabled={!mediaSettings.enabled || !mediaSettings.send_thumbnail || !mediaSettings.compress_thumbnail}
+                onClick={async () => {
+                  try {
+                    await invoke("set_media_settings", { settings: mediaSettings });
+                    toast.success("缩略图大小设置已更新");
+                  } catch (error) {
+                    toast.error("更新设置失败");
+                    console.error(error);
+                  }
+                }}
+              >
+                保存
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              推荐值：8KB（低质量）、16KB（平衡）、32KB（高质量）
+            </p>
+          </div>
+
+          <Separator />
+
+          <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-950">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">注意事项</h3>
+                <div className="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>此功能仅在Windows 10/11上可用</li>
+                    <li>需要媒体播放器支持Windows Media Control API</li>
+                    <li>支持的播放器：Spotify、Chrome、VLC等</li>
+                    <li>发送封面会增加网络流量（每次约16KB）</li>
+                  </ul>
+                </div>
+              </div>
             </div>
           </div>
         </CardContent>
