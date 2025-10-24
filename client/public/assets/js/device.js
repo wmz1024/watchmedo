@@ -702,12 +702,14 @@ function escapeHtml(text) {
 function startRealtimeRefresh() {
     // 立即加载一次
     loadRealtimeData();
+    loadCurrentMedia(); // 加载媒体播放状态
     
     // 每10秒刷新一次
     refreshInterval = setInterval(function() {
         loadRealtimeData();
         loadOtherDevices(); // 同时刷新其他设备列表
         loadAppTimeline(); // 同时刷新应用时间轴
+        loadCurrentMedia(); // 刷新媒体播放状态
     }, 10000);
     
     // 倒计时显示
@@ -1640,5 +1642,110 @@ function formatDurationWithSeconds(seconds) {
     parts.push(`${secs}秒`);
     
     return parts.join(' ');
+}
+
+// 加载当前媒体播放状态
+async function loadCurrentMedia() {
+    try {
+        const response = await fetch(`../api/stats.php?action=current_media&device_id=${deviceId}`);
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+            renderMediaPlayback(result.data);
+        } else {
+            // 没有媒体数据，隐藏卡片
+            hideMediaPlayback();
+        }
+    } catch (error) {
+        console.error('加载媒体播放状态失败:', error);
+        hideMediaPlayback();
+    }
+}
+
+// 渲染媒体播放状态
+function renderMediaPlayback(media) {
+    const card = document.getElementById('media-playback-card');
+    
+    if (!card) {
+        return;
+    }
+    
+    // 显示卡片
+    card.classList.remove('hidden');
+    
+    // 更新标题
+    document.getElementById('media-title').textContent = media.title || '-';
+    
+    // 更新艺术家/专辑
+    const artistText = media.artist ? 
+        (media.album ? `${media.artist} - ${media.album}` : media.artist) : 
+        (media.album || '-');
+    document.getElementById('media-artist').textContent = artistText;
+    
+    // 更新媒体类型标签
+    const typeLabel = media.media_type === 'Music' ? '音乐' : '视频';
+    document.getElementById('media-type-badge').textContent = typeLabel;
+    
+    // 更新播放状态标签
+    const statusBadge = document.getElementById('media-status-badge');
+    if (media.playback_status === 'Playing') {
+        statusBadge.textContent = '播放中';
+        statusBadge.className = 'px-2 py-1 bg-green-100 text-green-600 rounded';
+        document.getElementById('media-status-title').textContent = '正在播放';
+    } else if (media.playback_status === 'Paused') {
+        statusBadge.textContent = '已暂停';
+        statusBadge.className = 'px-2 py-1 bg-yellow-100 text-yellow-600 rounded';
+        document.getElementById('media-status-title').textContent = '已暂停';
+    } else {
+        statusBadge.textContent = media.playback_status || '未知';
+        statusBadge.className = 'px-2 py-1 bg-gray-100 text-gray-600 rounded';
+    }
+    
+    // 更新缩略图
+    const thumbnailContainer = document.getElementById('media-thumbnail-container');
+    const thumbnail = document.getElementById('media-thumbnail');
+    if (media.thumbnail) {
+        thumbnail.src = 'data:image/jpeg;base64,' + media.thumbnail;
+        thumbnailContainer.classList.remove('hidden');
+    } else {
+        thumbnailContainer.classList.add('hidden');
+    }
+    
+    // 更新进度条
+    const progressContainer = document.getElementById('media-progress-container');
+    if (media.duration && media.position !== null && media.position !== undefined) {
+        progressContainer.classList.remove('hidden');
+        
+        const progress = (media.position / media.duration) * 100;
+        document.getElementById('media-progress-bar').style.width = progress + '%';
+        
+        document.getElementById('media-current-time').textContent = formatMediaTime(media.position);
+        document.getElementById('media-total-time').textContent = formatMediaTime(media.duration);
+    } else {
+        progressContainer.classList.add('hidden');
+    }
+}
+
+// 隐藏媒体播放卡片
+function hideMediaPlayback() {
+    const card = document.getElementById('media-playback-card');
+    if (card) {
+        card.classList.add('hidden');
+    }
+}
+
+// 格式化媒体时间（秒转为 mm:ss 或 hh:mm:ss）
+function formatMediaTime(seconds) {
+    if (!seconds || seconds < 0) return '0:00';
+    
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    
+    if (hours > 0) {
+        return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    } else {
+        return `${minutes}:${String(secs).padStart(2, '0')}`;
+    }
 }
 

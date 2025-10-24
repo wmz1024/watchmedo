@@ -214,6 +214,55 @@ switch ($action) {
         successResponse($result);
         break;
         
+    case 'current_media':
+        // 获取设备当前播放的媒体信息
+        $deviceId = $_GET['device_id'] ?? null;
+        
+        if (empty($deviceId)) {
+            errorResponse('缺少设备ID');
+        }
+        
+        // 确保媒体表存在
+        ensureMediaPlaybackTable($db);
+        
+        // 获取最新的媒体播放记录（1分钟内）
+        try {
+            $latestMedia = $db->fetchOne(
+                'SELECT * FROM media_playback 
+                 WHERE device_id = ? 
+                   AND timestamp >= DATE_SUB(NOW(), INTERVAL 1 MINUTE)
+                 ORDER BY timestamp DESC 
+                 LIMIT 1',
+                [$deviceId]
+            );
+            
+            if ($latestMedia) {
+                // 格式化数据
+                $mediaInfo = [
+                    'title' => $latestMedia['title'],
+                    'artist' => $latestMedia['artist'],
+                    'album' => $latestMedia['album'],
+                    'duration' => $latestMedia['duration'] ? (int)$latestMedia['duration'] : null,
+                    'position' => $latestMedia['position'] ? (int)$latestMedia['position'] : null,
+                    'playback_status' => $latestMedia['playback_status'],
+                    'media_type' => $latestMedia['media_type'],
+                    'thumbnail' => $latestMedia['thumbnail'],
+                    'timestamp' => $latestMedia['timestamp'],
+                    'time_ago' => timeAgo($latestMedia['timestamp'])
+                ];
+                
+                successResponse($mediaInfo);
+            } else {
+                // 没有最近的媒体播放记录
+                successResponse(null);
+            }
+        } catch (Exception $e) {
+            // 如果表不存在或其他错误，返回null
+            error_log("获取媒体信息失败: " . $e->getMessage());
+            successResponse(null);
+        }
+        break;
+        
     case 'realtime':
         // 获取实时系统资源数据
         $deviceId = $_GET['device_id'] ?? null;

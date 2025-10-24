@@ -495,3 +495,90 @@ function getDatabaseStats($db) {
     return $stats;
 }
 
+/**
+ * 确保媒体播放表存在（自动迁移）
+ * 
+ * @param Database $db 数据库实例
+ * @return bool 表是否存在或成功创建
+ */
+function ensureMediaPlaybackTable($db) {
+    try {
+        // 检查表是否存在
+        if (DB_TYPE === 'mysql') {
+            $result = $db->fetchOne(
+                "SELECT COUNT(*) as count 
+                 FROM information_schema.TABLES 
+                 WHERE table_schema = ? AND table_name = 'media_playback'",
+                [MYSQL_DATABASE]
+            );
+            
+            $tableExists = $result && $result['count'] > 0;
+        } else {
+            // SQLite
+            $result = $db->fetchOne(
+                "SELECT COUNT(*) as count 
+                 FROM sqlite_master 
+                 WHERE type='table' AND name='media_playback'"
+            );
+            
+            $tableExists = $result && $result['count'] > 0;
+        }
+        
+        // 如果表不存在，创建它
+        if (!$tableExists) {
+            error_log("媒体播放表不存在，正在自动创建...");
+            
+            if (DB_TYPE === 'mysql') {
+                $sql = "CREATE TABLE IF NOT EXISTS media_playback (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    device_id INT NOT NULL,
+                    title VARCHAR(500) NOT NULL,
+                    artist VARCHAR(255) DEFAULT NULL,
+                    album VARCHAR(255) DEFAULT NULL,
+                    duration INT UNSIGNED DEFAULT NULL COMMENT '总时长（秒）',
+                    position INT UNSIGNED DEFAULT NULL COMMENT '当前播放位置（秒）',
+                    playback_status VARCHAR(20) NOT NULL DEFAULT 'Playing' COMMENT 'Playing, Paused, Stopped',
+                    media_type VARCHAR(20) NOT NULL DEFAULT 'Music' COMMENT 'Music, Video',
+                    thumbnail MEDIUMTEXT DEFAULT NULL COMMENT 'Base64编码的缩略图',
+                    timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_device_timestamp (device_id, timestamp),
+                    INDEX idx_timestamp (timestamp),
+                    FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='媒体播放状态记录'";
+            } else {
+                // SQLite
+                $sql = "CREATE TABLE IF NOT EXISTS media_playback (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    device_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    artist TEXT DEFAULT NULL,
+                    album TEXT DEFAULT NULL,
+                    duration INTEGER DEFAULT NULL,
+                    position INTEGER DEFAULT NULL,
+                    playback_status TEXT NOT NULL DEFAULT 'Playing',
+                    media_type TEXT NOT NULL DEFAULT 'Music',
+                    thumbnail TEXT DEFAULT NULL,
+                    timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
+                )";
+            }
+            
+            $db->execute($sql);
+            
+            // 创建索引（SQLite）
+            if (DB_TYPE === 'sqlite') {
+                $db->execute("CREATE INDEX IF NOT EXISTS idx_media_device_timestamp ON media_playback(device_id, timestamp)");
+                $db->execute("CREATE INDEX IF NOT EXISTS idx_media_timestamp ON media_playback(timestamp)");
+            }
+            
+            error_log("媒体播放表创建成功");
+            return true;
+        }
+        
+        return true;
+    } catch (Exception $e) {
+        error_log("创建媒体播放表失败: " . $e->getMessage());
+        return false;
+    }
+}
+

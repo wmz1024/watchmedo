@@ -41,6 +41,9 @@ if (empty($data)) {
 // 数据库实例
 $db = Database::getInstance();
 
+// 检查并自动创建媒体播放表（如果不存在）
+ensureMediaPlaybackTable($db);
+
 try {
     $db->beginTransaction();
     
@@ -150,6 +153,31 @@ try {
                     $network['transmitted'] ?? 0
                 ]
             );
+        }
+    }
+    
+    // 插入媒体播放信息（可选，兼容旧版本）
+    if (isset($data['media']) && is_array($data['media']) && !empty($data['media']['title'])) {
+        try {
+            $db->execute(
+                'INSERT INTO media_playback (device_id, title, artist, album, duration, position, playback_status, media_type, thumbnail, timestamp) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [
+                    $deviceId,
+                    $data['media']['title'] ?? '',
+                    $data['media']['artist'] ?? null,
+                    $data['media']['album'] ?? null,
+                    $data['media']['duration'] ?? null,
+                    $data['media']['position'] ?? null,
+                    $data['media']['playback_status'] ?? 'Playing',
+                    $data['media']['media_type'] ?? 'Music',
+                    $data['media']['thumbnail'] ?? null,
+                    $timestamp
+                ]
+            );
+        } catch (Exception $e) {
+            // 如果媒体表不存在，忽略错误（兼容旧版本）
+            error_log("插入媒体数据失败（可能是表不存在）: " . $e->getMessage());
         }
     }
     

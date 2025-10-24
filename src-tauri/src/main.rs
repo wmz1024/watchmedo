@@ -1,6 +1,8 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod media_monitor;
+
 use std::sync::{Arc, Mutex};
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -18,6 +20,7 @@ use tauri::{
 };
 use auto_launch::AutoLaunch;
 use std::time::SystemTime;
+use media_monitor::{MediaInfo, MediaSettings};
 
 #[cfg(windows)]
 mod windows_helper {
@@ -153,6 +156,7 @@ struct SystemInfo {
     disks: Option<Vec<DiskInfo>>,
     network: Option<Vec<NetworkInfo>>,
     battery: Option<BatteryInfo>,
+    media: Option<MediaInfo>,
 }
 
 #[derive(Serialize, Clone)]
@@ -545,6 +549,9 @@ async fn get_system_info(State(state): State<Arc<AppState>>) -> Json<SystemInfo>
     // 获取电池信息（如果是笔记本）
     let battery = get_battery_info();
 
+    // 获取媒体播放信息
+    let media = media_monitor::get_current_media().await;
+
     Json(SystemInfo {
         computer_name,
         uptime,
@@ -554,6 +561,7 @@ async fn get_system_info(State(state): State<Arc<AppState>>) -> Json<SystemInfo>
         disks,
         network,
         battery,
+        media,
     })
 }
 
@@ -1234,6 +1242,9 @@ fn main() {
             get_processes,
             get_disks,
             get_network_info_dashboard,
+            media_monitor::get_media_settings,
+            media_monitor::set_media_settings,
+            media_monitor::get_current_media_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

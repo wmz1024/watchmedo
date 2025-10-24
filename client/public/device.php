@@ -194,6 +194,46 @@
 
             <!-- 设备信息 -->
             <div id="device-content" class="hidden">
+            <!-- 媒体播放状态（兼容旧版本，无数据时不显示） -->
+            <div id="media-playback-card" class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6 hidden">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">
+                        <span class="inline-flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
+                            </svg>
+                            <span id="media-status-title">正在播放</span>
+                        </span>
+                    </h3>
+                </div>
+                <div id="media-playback-content" class="flex items-start space-x-4">
+                    <!-- 缩略图 -->
+                    <div id="media-thumbnail-container" class="flex-shrink-0 hidden">
+                        <img id="media-thumbnail" src="" alt="封面" class="w-24 h-24 rounded-lg object-cover shadow-md">
+                    </div>
+                    <!-- 媒体信息 -->
+                    <div class="flex-1 min-w-0">
+                        <h4 id="media-title" class="text-lg font-semibold text-gray-900 truncate mb-1">-</h4>
+                        <p id="media-artist" class="text-sm text-gray-600 truncate mb-2">-</p>
+                        <!-- 进度条 -->
+                        <div id="media-progress-container" class="mb-2 hidden">
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div id="media-progress-bar" class="bg-purple-600 h-2 rounded-full transition-all" style="width: 0%"></div>
+                            </div>
+                            <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                <span id="media-current-time">0:00</span>
+                                <span id="media-total-time">0:00</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-3 text-xs text-gray-500">
+                            <span id="media-type-badge" class="px-2 py-1 bg-purple-100 text-purple-600 rounded">音乐</span>
+                            <span id="media-status-badge" class="px-2 py-1 bg-green-100 text-green-600 rounded">播放中</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- 实时信息卡片 -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 <!-- 当前聚焦应用 -->
