@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::fs;
+use base64::{Engine as _, engine::general_purpose};
 
 /// 媒体信息结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,10 +109,15 @@ pub async fn get_current_media() -> Option<MediaInfo> {
     };
     
     // 获取媒体会话管理器
-    let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
-        .ok()?
-        .await
-        .ok()?;
+    let manager = match GlobalSystemMediaTransportControlsSessionManager::RequestAsync() {
+        Ok(async_op) => {
+            match async_op.get() {
+                Ok(mgr) => mgr,
+                Err(_) => return None,
+            }
+        }
+        Err(_) => return None,
+    };
     
     // 获取当前会话
     let session = manager.GetCurrentSession().ok()?;
@@ -164,7 +170,7 @@ pub async fn get_current_media() -> Option<MediaInfo> {
     }.to_string();
     
     // 获取缩略图（如果配置允许）
-    let thumbnail = get_media_thumbnail(&media_properties).await;
+    let thumbnail = get_media_thumbnail(&media_properties);
     
     Some(MediaInfo {
         title,
@@ -179,10 +185,8 @@ pub async fn get_current_media() -> Option<MediaInfo> {
 }
 
 #[cfg(target_os = "windows")]
-async fn get_media_thumbnail(media_properties: &windows::Media::Control::GlobalSystemMediaTransportControlsSessionMediaProperties) -> Option<String> {
+fn get_media_thumbnail(media_properties: &windows::Media::Control::GlobalSystemMediaTransportControlsSessionMediaProperties) -> Option<String> {
     use windows::Storage::Streams::DataReader;
-    use image::ImageFormat;
-    use std::io::Cursor;
     
     // 加载配置
     let settings = load_media_settings();
@@ -194,18 +198,25 @@ async fn get_media_thumbnail(media_properties: &windows::Media::Control::GlobalS
     
     // 获取缩略图流
     let thumbnail_ref = media_properties.Thumbnail().ok()?;
-    let stream = thumbnail_ref.OpenReadAsync()
-        .ok()?
-        .await
-        .ok()?;
+    let stream = match thumbnail_ref.OpenReadAsync() {
+        Ok(async_op) => match async_op.get() {
+            Ok(s) => s,
+            Err(_) => return None,
+        },
+        Err(_) => return None,
+    };
     
     let size = stream.Size().ok()? as u32;
     
     // 读取数据
     let reader = DataReader::CreateDataReader(&stream).ok()?;
-    reader.LoadAsync(size).ok()?
-        .await
-        .ok()?;
+    match reader.LoadAsync(size) {
+        Ok(async_op) => match async_op.get() {
+            Ok(_) => {},
+            Err(_) => return None,
+        },
+        Err(_) => return None,
+    }
     
     let mut buffer = vec![0u8; size as usize];
     reader.ReadBytes(&mut buffer).ok()?;
@@ -213,25 +224,25 @@ async fn get_media_thumbnail(media_properties: &windows::Media::Control::GlobalS
     // 如果需要压缩
     if settings.compress_thumbnail {
         match compress_image(&buffer, settings.thumbnail_max_size_kb) {
-            Ok(compressed) => Some(base64::encode(&compressed)),
+            Ok(compressed) => Some(general_purpose::STANDARD.encode(&compressed)),
             Err(e) => {
                 eprintln!("压缩图片失败: {}", e);
                 // 如果压缩失败，检查原图大小
                 if buffer.len() <= (settings.thumbnail_max_size_kb as usize * 1024) {
-                    Some(base64::encode(&buffer))
+                    Some(general_purpose::STANDARD.encode(&buffer))
                 } else {
                     None
                 }
             }
         }
     } else {
-        Some(base64::encode(&buffer))
+        Some(general_purpose::STANDARD.encode(&buffer))
     }
 }
 
 /// 压缩图片到指定大小
 fn compress_image(data: &[u8], max_size_kb: u32) -> Result<Vec<u8>, String> {
-    use image::ImageFormat;
+    use image::GenericImageView;
     use std::io::Cursor;
     
     // 加载图片

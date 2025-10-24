@@ -13,14 +13,14 @@ use axum::{
     Router, Json,
 };
 use serde::{Deserialize, Serialize};
-use sysinfo::{System, Networks, Disks, Components};
+use sysinfo::{System, Networks, Disks};
 use tauri::{
     Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem, 
     CustomMenuItem, AppHandle, WindowEvent
 };
 use auto_launch::AutoLaunch;
 use std::time::SystemTime;
-use media_monitor::{MediaInfo, MediaSettings};
+use media_monitor::MediaInfo;
 
 #[cfg(windows)]
 mod windows_helper {
@@ -1160,7 +1160,7 @@ fn handle_tray_event(app: &AppHandle, event: SystemTrayEvent) {
 }
 
 fn main() {
-    let mut app_state = AppState::new();
+    let app_state = AppState::new();
     
     // 从文件加载远程设置
     if let Some(saved_settings) = load_remote_settings() {
