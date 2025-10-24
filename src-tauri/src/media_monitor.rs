@@ -102,22 +102,18 @@ pub fn load_media_settings() -> MediaSettings {
 
 /// 获取当前播放的媒体信息
 #[cfg(target_os = "windows")]
-pub async fn get_current_media() -> Option<MediaInfo> {
+fn get_current_media_sync() -> Option<MediaInfo> {
     use windows::Media::Control::{
         GlobalSystemMediaTransportControlsSessionManager,
         GlobalSystemMediaTransportControlsSessionPlaybackStatus,
     };
-    use windows::Foundation::IAsyncOperation;
     
-    // 获取媒体会话管理器
+    // 获取媒体会话管理器 (使用阻塞调用)
     let manager = match GlobalSystemMediaTransportControlsSessionManager::RequestAsync() {
-        Ok(async_op) => {
-            // 使用 await 等待异步操作完成
-            match async_op.await {
-                Ok(mgr) => mgr,
-                Err(_) => return None,
-            }
-        }
+        Ok(async_op) => match async_op.get() {
+            Ok(mgr) => mgr,
+            Err(_) => return None,
+        },
         Err(_) => return None,
     };
     
@@ -140,9 +136,9 @@ pub async fn get_current_media() -> Option<MediaInfo> {
         return None;
     }
     
-    // 获取媒体属性
+    // 获取媒体属性 (使用阻塞调用)
     let media_properties = match session.TryGetMediaPropertiesAsync() {
-        Ok(async_op) => match async_op.await {
+        Ok(async_op) => match async_op.get() {
             Ok(props) => props,
             Err(_) => return None,
         },
@@ -175,7 +171,7 @@ pub async fn get_current_media() -> Option<MediaInfo> {
     }.to_string();
     
     // 获取缩略图（如果配置允许）
-    let thumbnail = get_media_thumbnail(&media_properties).await;
+    let thumbnail = get_media_thumbnail(&media_properties);
     
     Some(MediaInfo {
         title,
@@ -190,7 +186,7 @@ pub async fn get_current_media() -> Option<MediaInfo> {
 }
 
 #[cfg(target_os = "windows")]
-async fn get_media_thumbnail(media_properties: &windows::Media::Control::GlobalSystemMediaTransportControlsSessionMediaProperties) -> Option<String> {
+fn get_media_thumbnail(media_properties: &windows::Media::Control::GlobalSystemMediaTransportControlsSessionMediaProperties) -> Option<String> {
     use windows::Storage::Streams::DataReader;
     
     // 加载配置
@@ -201,10 +197,10 @@ async fn get_media_thumbnail(media_properties: &windows::Media::Control::GlobalS
         return None;
     }
     
-    // 获取缩略图流
+    // 获取缩略图流 (使用阻塞调用)
     let thumbnail_ref = media_properties.Thumbnail().ok()?;
     let stream = match thumbnail_ref.OpenReadAsync() {
-        Ok(async_op) => match async_op.await {
+        Ok(async_op) => match async_op.get() {
             Ok(s) => s,
             Err(_) => return None,
         },
@@ -213,10 +209,10 @@ async fn get_media_thumbnail(media_properties: &windows::Media::Control::GlobalS
     
     let size = stream.Size().ok()? as u32;
     
-    // 读取数据
+    // 读取数据 (使用阻塞调用)
     let reader = DataReader::CreateDataReader(&stream).ok()?;
     match reader.LoadAsync(size) {
-        Ok(async_op) => match async_op.await {
+        Ok(async_op) => match async_op.get() {
             Ok(_) => {},
             Err(_) => return None,
         },
@@ -290,9 +286,17 @@ fn compress_image(data: &[u8], max_size_kb: u32) -> Result<Vec<u8>, String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub async fn get_current_media() -> Option<MediaInfo> {
+fn get_current_media_sync() -> Option<MediaInfo> {
     // 其他平台暂不支持
     None
+}
+
+// 异步包装函数
+pub async fn get_current_media() -> Option<MediaInfo> {
+    // 在阻塞线程池中运行，避免 Send 问题
+    tokio::task::spawn_blocking(|| {
+        get_current_media_sync()
+    }).await.ok().flatten()
 }
 
 // Tauri Commands
