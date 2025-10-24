@@ -24,6 +24,10 @@ let realtimeHistory = {
     maxPoints: 30 // 保留最近30个数据点（5分钟）
 };
 
+// 应用时间轴数据
+let appTimeline = [];
+let timelineUpdateInterval = null;
+
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
     // 获取设备ID
@@ -112,13 +116,20 @@ document.addEventListener('DOMContentLoaded', function() {
     // 加载Giscus评论配置
     loadGiscusConfig();
     
+    // 加载应用时间轴
+    loadAppTimeline();
+    
     // 启动实时数据自动刷新（每10秒）
     startRealtimeRefresh();
+    
+    // 启动时间轴时间实时更新（每1秒）
+    startTimelineUpdate();
 });
 
 // 清理定时器
 window.addEventListener('beforeunload', function() {
     stopRealtimeRefresh();
+    stopTimelineUpdate();
 });
 
 // 切换侧边栏（手机端）
@@ -696,6 +707,7 @@ function startRealtimeRefresh() {
     refreshInterval = setInterval(function() {
         loadRealtimeData();
         loadOtherDevices(); // 同时刷新其他设备列表
+        loadAppTimeline(); // 同时刷新应用时间轴
     }, 10000);
     
     // 倒计时显示
@@ -1459,5 +1471,174 @@ function getBatteryIconSVG(level) {
     }
     
     return base + fill;
+}
+
+// 加载应用时间轴
+async function loadAppTimeline() {
+    try {
+        const response = await fetch(`../api/stats.php?action=app_timeline&device_id=${deviceId}`);
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+            appTimeline = result.data.timeline || [];
+            renderAppTimeline();
+        } else {
+            console.error('加载时间轴失败:', result.error);
+            showTimelineError(result.error || '加载失败');
+        }
+    } catch (error) {
+        console.error('加载应用时间轴失败:', error);
+        showTimelineError('网络请求失败');
+    }
+}
+
+// 渲染应用时间轴
+function renderAppTimeline() {
+    const container = document.getElementById('app-timeline');
+    
+    if (!container) {
+        console.error('找不到app-timeline容器');
+        return;
+    }
+    
+    if (appTimeline.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-8">
+                <svg class="w-12 h-12 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <p class="text-gray-500">暂无应用切换记录</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = appTimeline.map((item, index) => {
+        const isCurrent = item.is_current === true || index === 0;
+        const startTime = new Date(item.start_time);
+        const duration = calculateDuration(item.start_time, isCurrent ? null : item.end_time);
+        const durationFormatted = formatDurationWithSeconds(duration);
+        
+        // 格式化时间显示
+        const timeStr = formatTimeString(startTime);
+        
+        return `
+            <div class="timeline-item ${isCurrent ? 'current' : ''}" data-index="${index}">
+                <div class="timeline-dot"></div>
+                <div class="bg-gray-50 rounded-lg p-3 hover:bg-gray-100 transition-colors">
+                    <div class="flex items-start justify-between mb-2">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center space-x-2">
+                                <h4 class="text-sm font-semibold text-gray-900 truncate">${escapeHtml(item.app_name)}</h4>
+                                ${isCurrent ? '<span class="flex-shrink-0 px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-600 rounded">当前</span>' : ''}
+                            </div>
+                            <p class="text-xs text-gray-600 mt-1 truncate" title="${escapeHtml(item.window_title)}">${escapeHtml(item.window_title)}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                        <div class="flex items-center text-gray-500">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <span>${timeStr}</span>
+                        </div>
+                        <div class="timeline-duration font-semibold ${isCurrent ? 'text-blue-600' : 'text-gray-700'}" data-start="${item.start_time}" data-end="${isCurrent ? '' : item.end_time}" data-is-current="${isCurrent}">
+                            ${durationFormatted}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// 显示时间轴错误
+function showTimelineError(message) {
+    const container = document.getElementById('app-timeline');
+    if (container) {
+        container.innerHTML = `
+            <div class="text-center py-8">
+                <p class="text-gray-500">${escapeHtml(message)}</p>
+            </div>
+        `;
+    }
+}
+
+// 启动时间轴实时更新
+function startTimelineUpdate() {
+    // 每秒更新一次停留时间
+    timelineUpdateInterval = setInterval(function() {
+        updateTimelineDurations();
+    }, 1000);
+}
+
+// 停止时间轴更新
+function stopTimelineUpdate() {
+    if (timelineUpdateInterval) {
+        clearInterval(timelineUpdateInterval);
+        timelineUpdateInterval = null;
+    }
+}
+
+// 更新时间轴中的停留时间（实时更新）
+function updateTimelineDurations() {
+    const durationElements = document.querySelectorAll('.timeline-duration');
+    
+    durationElements.forEach((el, index) => {
+        const startTime = el.getAttribute('data-start');
+        const endTime = el.getAttribute('data-end');
+        const isCurrent = el.getAttribute('data-is-current') === 'true';
+        
+        if (startTime) {
+            // 对于当前应用，使用当前时间作为结束时间
+            const duration = calculateDuration(startTime, isCurrent ? null : endTime);
+            el.textContent = formatDurationWithSeconds(duration);
+        }
+    });
+}
+
+// 计算持续时间（秒）
+function calculateDuration(startTime, endTime) {
+    const start = new Date(startTime);
+    const end = endTime ? new Date(endTime) : new Date();
+    return Math.floor((end - start) / 1000);
+}
+
+// 格式化时间字符串（显示具体时间）
+function formatTimeString(date) {
+    const now = new Date();
+    const diff = now - date;
+    const diffHours = diff / (1000 * 60 * 60);
+    
+    // 如果是今天，只显示时间
+    if (diffHours < 24 && now.getDate() === date.getDate()) {
+        return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+    
+    // 否则显示日期和时间
+    return date.toLocaleString('zh-CN', { 
+        month: '2-digit', 
+        day: '2-digit', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    });
+}
+
+// 格式化持续时间（包含秒，精确显示）
+function formatDurationWithSeconds(seconds) {
+    if (seconds < 0) seconds = 0;
+    
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    
+    const parts = [];
+    if (hours > 0) parts.push(`${hours}小时`);
+    if (minutes > 0 || hours > 0) parts.push(`${minutes}分`);
+    parts.push(`${secs}秒`);
+    
+    return parts.join(' ');
 }
 

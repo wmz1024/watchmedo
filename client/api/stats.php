@@ -437,6 +437,82 @@ switch ($action) {
         successResponse($history);
         break;
         
+    case 'app_timeline':
+        // 获取应用切换时间轴（最近24小时）
+        $deviceId = $_GET['device_id'] ?? null;
+        
+        if (empty($deviceId)) {
+            errorResponse('缺少设备ID');
+        }
+        
+        // 获取最近24小时的聚焦应用切换记录
+        $startTime = date('Y-m-d H:i:s', strtotime('-24 hours'));
+        $endTime = date('Y-m-d H:i:s');
+        
+        // 获取所有聚焦记录，按时间正序
+        $focusedRecords = $db->fetchAll(
+            'SELECT executable_name, window_title, timestamp
+             FROM process_records 
+             WHERE device_id = ? 
+               AND timestamp >= ? 
+               AND timestamp <= ?
+               AND is_focused = 1
+             ORDER BY timestamp ASC',
+            [$deviceId, $startTime, $endTime]
+        );
+        
+        // 构建时间轴数据（检测应用切换）
+        $timeline = [];
+        $lastApp = null;
+        $currentSession = null;
+        
+        foreach ($focusedRecords as $record) {
+            $appName = $record['executable_name'];
+            $windowTitle = $record['window_title'];
+            $timestamp = $record['timestamp'];
+            
+            // 检测应用是否切换
+            if ($lastApp !== $appName) {
+                // 如果有上一个会话，结束它
+                if ($currentSession !== null) {
+                    $currentSession['end_time'] = $timestamp;
+                    $currentSession['duration'] = strtotime($timestamp) - strtotime($currentSession['start_time']);
+                    $timeline[] = $currentSession;
+                }
+                
+                // 开始新的会话
+                $currentSession = [
+                    'app_name' => $appName,
+                    'window_title' => $windowTitle,
+                    'start_time' => $timestamp,
+                    'end_time' => null,
+                    'duration' => null
+                ];
+                
+                $lastApp = $appName;
+            }
+        }
+        
+        // 处理最后一个会话（当前正在使用的应用）
+        if ($currentSession !== null) {
+            $currentSession['end_time'] = date('Y-m-d H:i:s');
+            $currentSession['duration'] = time() - strtotime($currentSession['start_time']);
+            $currentSession['is_current'] = true;
+            $timeline[] = $currentSession;
+        }
+        
+        // 反转数组，使最新的在前面
+        $timeline = array_reverse($timeline);
+        
+        // 限制返回数量（最近100个切换）
+        $timeline = array_slice($timeline, 0, 100);
+        
+        successResponse([
+            'timeline' => $timeline,
+            'total' => count($timeline)
+        ]);
+        break;
+        
     default:
         errorResponse('未知操作', 400);
 }

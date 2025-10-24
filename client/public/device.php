@@ -56,6 +56,54 @@
                 transform: translateX(0);
             }
         }
+        
+        /* 时间轴样式 */
+        .timeline-item {
+            position: relative;
+            padding-left: 2.5rem;
+            padding-bottom: 1rem;
+            border-left: 2px solid #e5e7eb;
+        }
+        
+        .timeline-item:last-child {
+            border-left-color: transparent;
+            padding-bottom: 0;
+        }
+        
+        .timeline-item.current {
+            border-left-color: #3b82f6;
+        }
+        
+        .timeline-dot {
+            position: absolute;
+            left: -0.5rem;
+            top: 0.25rem;
+            width: 1rem;
+            height: 1rem;
+            border-radius: 50%;
+            background-color: #9ca3af;
+            border: 3px solid white;
+            box-shadow: 0 0 0 2px #e5e7eb;
+        }
+        
+        .timeline-item.current .timeline-dot {
+            background-color: #3b82f6;
+            box-shadow: 0 0 0 2px #3b82f6, 0 0 10px rgba(59, 130, 246, 0.5);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse-dot {
+            0%, 100% {
+                box-shadow: 0 0 0 2px #3b82f6, 0 0 10px rgba(59, 130, 246, 0.5);
+            }
+            50% {
+                box-shadow: 0 0 0 4px #3b82f6, 0 0 20px rgba(59, 130, 246, 0.8);
+            }
+        }
+        
+        .timeline-duration {
+            font-family: 'Courier New', monospace;
+        }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -193,6 +241,25 @@
                         <p class="text-sm text-gray-500">最后上报</p>
                         <p class="mt-1 text-lg font-semibold text-gray-900" id="last-seen">-</p>
                     </div>
+                </div>
+            </div>
+
+            <!-- 应用时间轴 -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">
+                        <span class="inline-flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            应用时间轴
+                        </span>
+                    </h3>
+                    <span class="text-xs text-gray-500">最近24小时应用切换记录</span>
+                </div>
+                <div id="app-timeline" class="space-y-3 max-h-96 overflow-y-auto">
+                    <p class="text-gray-500 text-center py-8">加载中...</p>
                 </div>
             </div>
 
