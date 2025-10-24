@@ -30,6 +30,8 @@ windows = { version = "0.52", features = [
     "Win32_UI_WindowsAndMessaging",
     "Media_Control",
     "Storage_Streams",
+    "Foundation",
+    "implement",
 ] }
 
 [features]

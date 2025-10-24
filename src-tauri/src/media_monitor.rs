@@ -107,11 +107,13 @@ pub async fn get_current_media() -> Option<MediaInfo> {
         GlobalSystemMediaTransportControlsSessionManager,
         GlobalSystemMediaTransportControlsSessionPlaybackStatus,
     };
+    use windows::Foundation::IAsyncOperation;
     
     // 获取媒体会话管理器
     let manager = match GlobalSystemMediaTransportControlsSessionManager::RequestAsync() {
         Ok(async_op) => {
-            match async_op.get() {
+            // 使用 await 等待异步操作完成
+            match async_op.await {
                 Ok(mgr) => mgr,
                 Err(_) => return None,
             }
@@ -139,10 +141,13 @@ pub async fn get_current_media() -> Option<MediaInfo> {
     }
     
     // 获取媒体属性
-    let media_properties = session.TryGetMediaPropertiesAsync()
-        .ok()?
-        .await
-        .ok()?;
+    let media_properties = match session.TryGetMediaPropertiesAsync() {
+        Ok(async_op) => match async_op.await {
+            Ok(props) => props,
+            Err(_) => return None,
+        },
+        Err(_) => return None,
+    };
     
     let title = media_properties.Title().ok()?
         .to_string_lossy();
@@ -170,7 +175,7 @@ pub async fn get_current_media() -> Option<MediaInfo> {
     }.to_string();
     
     // 获取缩略图（如果配置允许）
-    let thumbnail = get_media_thumbnail(&media_properties);
+    let thumbnail = get_media_thumbnail(&media_properties).await;
     
     Some(MediaInfo {
         title,
@@ -185,7 +190,7 @@ pub async fn get_current_media() -> Option<MediaInfo> {
 }
 
 #[cfg(target_os = "windows")]
-fn get_media_thumbnail(media_properties: &windows::Media::Control::GlobalSystemMediaTransportControlsSessionMediaProperties) -> Option<String> {
+async fn get_media_thumbnail(media_properties: &windows::Media::Control::GlobalSystemMediaTransportControlsSessionMediaProperties) -> Option<String> {
     use windows::Storage::Streams::DataReader;
     
     // 加载配置
@@ -199,7 +204,7 @@ fn get_media_thumbnail(media_properties: &windows::Media::Control::GlobalSystemM
     // 获取缩略图流
     let thumbnail_ref = media_properties.Thumbnail().ok()?;
     let stream = match thumbnail_ref.OpenReadAsync() {
-        Ok(async_op) => match async_op.get() {
+        Ok(async_op) => match async_op.await {
             Ok(s) => s,
             Err(_) => return None,
         },
@@ -211,7 +216,7 @@ fn get_media_thumbnail(media_properties: &windows::Media::Control::GlobalSystemM
     // 读取数据
     let reader = DataReader::CreateDataReader(&stream).ok()?;
     match reader.LoadAsync(size) {
-        Ok(async_op) => match async_op.get() {
+        Ok(async_op) => match async_op.await {
             Ok(_) => {},
             Err(_) => return None,
         },
